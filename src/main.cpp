@@ -16,10 +16,10 @@ static constexpr uint8_t SPI_CLOCK_PIN    = 18;
 static constexpr uint8_t SPI_MISO_DO_PIN  = 19;   // DO/MISO (shared)
 
 // MAX31855 Chip Select pins
-static constexpr uint8_t MAX31855_CS_HIGH_PRESSURE = 16;
-static constexpr uint8_t MAX31855_CS_LOW_PRESSURE  = 17;
-static constexpr uint8_t MAX31855_CS_SUPPLY_AIR    = 26;
-static constexpr uint8_t MAX31855_CS_RETURN_AIR    = 27;
+static constexpr uint8_t MAX31855_CS_HIGH_PRESSURE = 16;  // Flag on PCB to correctly install
+static constexpr uint8_t MAX31855_CS_LOW_PRESSURE  = 17;  // Flag on PCB to correctly install
+static constexpr uint8_t MAX31855_CS_SUPPLY_AIR    = 26;  // Flag on PCB to correctly install
+static constexpr uint8_t MAX31855_CS_RETURN_AIR    = 27;  // Flag on PCB to correctly install
 
 // SPI configuration for MAX31855
 static const SPISettings MAX31855_SPI_SETTINGS(
@@ -609,7 +609,8 @@ struct PressureToTempRangeF {
   float satTempF;
 };
 
-// R-22 saturation table (from your old python list)
+// R-22 saturation table. Update for different refrigerants as needed.
+// Source: standard R-22 P/T chart
 static constexpr PressureToTempRangeF R22_PT_TABLE_F[] = {
   {0, 50, 0}, {50, 52, 1}, {52, 54, 3}, {54, 56, 4}, {56, 58, 6},
   {58, 60, 7}, {62, 64, 10}, {64, 66, 11}, {66, 68, 12}, {68, 70, 14},
@@ -679,64 +680,232 @@ static void printSatTempOrFault(const char* label, float tempF) {
 
 
 // ===================== SUPERHEAT / SUBCOOLING =====================
-// Superheat = Suction line temp - Low-side saturation temp
-// Subcool  = High-side saturation temp - Liquid line temp
-//
-// NOTE: We store temps internally as C in hvacTemps, but saturation temps are F.
-// We'll compute SH/SC in Fahrenheit for HVAC readability.
-
-struct HvacSuperheatSubcool {
-  float superheatF;     // °F
-  float subcoolingF;    // °F
-  uint32_t updatedAtMs; // millis() when computed
+// Assumes:
+//  - lowPressureLineTempC  = suction line temp (evaporator outlet)
+//  - highPressureLineTempC = liquid line temp (condenser outlet)
+//  - hvacSatTemps.lowSideSatTempF  from low side pressure
+//  - hvacSatTemps.highSideSatTempF from high side pressure
+struct HvacShSc {
+  float superheatF;     // suction temp - low side sat temp
+  float subcoolingF;    // high side sat temp - liquid temp
+  uint32_t updatedAtMs;
 };
 
-// Init
-static HvacSuperheatSubcool hvacShSc = {
+static HvacShSc hvacShSc = {
   NAN, // superheatF
   NAN, // subcoolingF
   0    // updatedAtMs
 };
 
-static bool isValidF(float tF) { return !isnan(tF); }
-static bool isValidC(float tC) { return !isnan(tC); }
 
-// Update SH/SC from current temps + saturation temps
+static float computeSuperheatF(float suctionLineTempF, float lowSideSatTempF) {
+  if (isnan(suctionLineTempF) || isnan(lowSideSatTempF)) return NAN;
+  return suctionLineTempF - lowSideSatTempF;
+}
+
+static float computeSubcoolingF(float highSideSatTempF, float liquidLineTempF) {
+  if (isnan(highSideSatTempF) || isnan(liquidLineTempF)) return NAN;
+  return highSideSatTempF - liquidLineTempF;
+}
+
+// Update SH/SC from your existing hvacTemps + hvacSatTemps
 static void updateHvacSuperheatSubcool() {
-  hvacShSc.superheatF  = NAN;
-  hvacShSc.subcoolingF = NAN;
-
-  // Convert line temps (C -> F)
+  // Convert line temps to F
   const float suctionLineTempF = celsiusToFahrenheit(hvacTemps.lowPressureLineTempC);
   const float liquidLineTempF  = celsiusToFahrenheit(hvacTemps.highPressureLineTempC);
 
-  // Superheat: suction line - low-side sat
-  if (isValidF(suctionLineTempF) && isValidF(hvacSatTemps.lowSideSatTempF)) {
-    hvacShSc.superheatF = suctionLineTempF - hvacSatTemps.lowSideSatTempF;
-  }
+  hvacShSc.superheatF  = computeSuperheatF(suctionLineTempF, hvacSatTemps.lowSideSatTempF);
+  hvacShSc.subcoolingF = computeSubcoolingF(hvacSatTemps.highSideSatTempF, liquidLineTempF);
 
-  // Subcooling: high-side sat - liquid line
-  if (isValidF(liquidLineTempF) && isValidF(hvacSatTemps.highSideSatTempF)) {
-    hvacShSc.subcoolingF = hvacSatTemps.highSideSatTempF - liquidLineTempF;
-  }
+  hvacShSc.updatedAtMs = millis();
+}
 
-  // Timestamp only if we computed at least one
-  if (!isnan(hvacShSc.superheatF) || !isnan(hvacShSc.subcoolingF)) {
-    hvacShSc.updatedAtMs = millis();
+static void printShScOrFault(const char* label, float valueF) {
+  if (isnan(valueF)) Serial.printf("%s: FAULT\n", label);
+  else               Serial.printf("%s: %.1f F\n", label, valueF);
+}
+//----------------------------------------------------------------------//
+
+
+// ===================== FaultCode(s) ====================
+enum class FaultCode : uint16_t {
+  None = 0,
+
+  // Sensor / compute validity
+  Fault_MissingTemp,
+  Fault_MissingPressure,
+  Fault_MissingSatTemp,
+  Fault_MissingShSc,
+
+  // Pressure-based
+  Fault_StaticNotEqualizing,
+  Fault_HighPsiTooHigh,
+  Fault_LowPsiTooLow,
+
+  // Line-temp based
+  Fault_SuctionLineFreezing,
+  Fault_LiquidLineTooHot,
+
+  // Delta-T based
+  Fault_DeltaTTooLow,
+  Fault_DeltaTTooHigh,
+  Fault_DeltaTZero,
+
+  // SH/SC based
+  Fault_SubcoolLow,
+  Fault_SubcoolHigh,
+  Fault_SuperheatLow,
+  Fault_SuperheatHigh,
+
+  // Cross-check combos (optional but useful)
+  Fault_LowChargePattern,      // low subcool + high superheat
+  Fault_RestrictionPattern     // high subcool + high superheat (often)
+};
+
+static const char* faultCodeToString(FaultCode f) {
+  switch (f) {
+    case FaultCode::None: return "NONE";
+
+    case FaultCode::Fault_MissingTemp: return "FAULT_MISSING_TEMP";
+    case FaultCode::Fault_MissingPressure: return "FAULT_MISSING_PRESSURE";
+    case FaultCode::Fault_MissingSatTemp: return "FAULT_MISSING_SATTEMP";
+    case FaultCode::Fault_MissingShSc: return "FAULT_MISSING_SHSC";
+
+    case FaultCode::Fault_StaticNotEqualizing: return "FAULT_STATIC_NOT_EQUALIZING";
+    case FaultCode::Fault_HighPsiTooHigh: return "FAULT_HIGH_PSI_TOO_HIGH";
+    case FaultCode::Fault_LowPsiTooLow: return "FAULT_LOW_PSI_TOO_LOW";
+
+    case FaultCode::Fault_SuctionLineFreezing: return "FAULT_SUCTION_LINE_FREEZING";
+    case FaultCode::Fault_LiquidLineTooHot: return "FAULT_LIQUID_LINE_TOO_HOT";
+
+    case FaultCode::Fault_DeltaTTooLow: return "FAULT_DELTAT_TOO_LOW";
+    case FaultCode::Fault_DeltaTTooHigh: return "FAULT_DELTAT_TOO_HIGH";
+    case FaultCode::Fault_DeltaTZero: return "FAULT_DELTAT_ZERO";
+
+    case FaultCode::Fault_SubcoolLow: return "FAULT_SUBCOOL_LOW";
+    case FaultCode::Fault_SubcoolHigh: return "FAULT_SUBCOOL_HIGH";
+    case FaultCode::Fault_SuperheatLow: return "FAULT_SUPERHEAT_LOW";
+    case FaultCode::Fault_SuperheatHigh: return "FAULT_SUPERHEAT_HIGH";
+
+    case FaultCode::Fault_LowChargePattern: return "FAULT_LOW_CHARGE_PATTERN";
+    case FaultCode::Fault_RestrictionPattern: return "FAULT_RESTRICTION_PATTERN";
+
+    default: return "FAULT_UNKNOWN";
   }
 }
 
-// Print helper
-static void printValueOrFaultF(const char* label, float valueF) {
-  if (isnan(valueF)) {
-    Serial.printf("%s: FAULT\n", label);
-  } else {
-    Serial.printf("%s: %.1f F\n", label, valueF);
+struct FaultStatus {
+  FaultCode code;
+  DiagnosticState diag;   // Normal / SensorFault / WeakPerformance
+};
+
+static FaultStatus evaluateFaultsHeatPump(const HvacTemperatures& t,
+                                         const HvacPressures& p,
+                                         const HvacSaturationTemps& sat,
+                                         const HvacShSc& shsc,
+                                         HvacMode mode) {
+
+  // ---------- PLACEHOLDER THRESHOLDS (tune later) ----------
+  static constexpr float PSI_HIGH_MAX_COOL = 500.0f;   // X
+  static constexpr float PSI_LOW_MIN_COOL  = 40.0f;    // X
+
+  static constexpr float SUCTION_FREEZE_F  = 32.0f;    // freezing marker
+  static constexpr float LIQUID_TOO_HOT_F  = 130.0f;   // X
+
+  static constexpr float DELTAT_LOW_F      = 10.0f;    // X
+  static constexpr float DELTAT_HIGH_F     = 25.0f;    // X
+  static constexpr float DELTAT_ZERO_F     = 2.0f;     // near-zero band
+
+  static constexpr float SUBCOOL_LOW_F     = 5.0f;     // X
+  static constexpr float SUBCOOL_HIGH_F    = 20.0f;    // X
+  static constexpr float SUPERHEAT_LOW_F   = 2.0f;     // near-zero SH
+  static constexpr float SUPERHEAT_HIGH_F  = 25.0f;    // X
+  //----------------------------------------------------------
+
+  // Helpers
+  auto ok = [](float v) { return !isnan(v); };
+
+  // Convert needed temps to F for comparisons
+  const float suctionF = celsiusToFahrenheit(t.lowPressureLineTempC);
+  const float liquidF  = celsiusToFahrenheit(t.highPressureLineTempC);
+  const float deltaTF  = deltaCelsiusToDeltaFahrenheit(t.deltaTempC);
+
+  // ---------- SENSOR VALIDITY (highest priority) ----------
+  // Mode-based: only enforce what you *need* for that mode
+  if (!ok(t.supplyAirTempC) || !ok(t.returnAirTempC) || isnan(t.deltaTempC)) {
+    return { FaultCode::Fault_MissingTemp, DiagnosticState::SensorFault };
   }
+  if (!ok(p.lowSidePressurePsi) || !ok(p.highSidePressurePsi)) {
+    return { FaultCode::Fault_MissingPressure, DiagnosticState::SensorFault };
+  }
+  if (!ok(sat.lowSideSatTempF) || !ok(sat.highSideSatTempF)) {
+    return { FaultCode::Fault_MissingSatTemp, DiagnosticState::SensorFault };
+  }
+  if (!ok(shsc.superheatF) || !ok(shsc.subcoolingF)) {
+    return { FaultCode::Fault_MissingShSc, DiagnosticState::SensorFault };
+  }
+
+  // If OFF: you might only want “static equalization” checks later.
+  if (mode == HvacMode::Off) {
+    return { FaultCode::None, DiagnosticState::Normal };
+  }
+
+  // ---------- DELTA-T (system performance / airflow) ----------
+  if (ok(deltaTF) && fabsf(deltaTF) <= DELTAT_ZERO_F) {
+    return { FaultCode::Fault_DeltaTZero, DiagnosticState::WeakPerformance };
+  }
+  if (ok(deltaTF) && deltaTF < DELTAT_LOW_F) {
+    return { FaultCode::Fault_DeltaTTooLow, DiagnosticState::WeakPerformance };
+  }
+  if (ok(deltaTF) && deltaTF > DELTAT_HIGH_F) {
+    return { FaultCode::Fault_DeltaTTooHigh, DiagnosticState::WeakPerformance };
+  }
+
+  // ---------- PRESSURES ----------
+  if (mode == HvacMode::Cooling) {
+    if (p.highSidePressurePsi > PSI_HIGH_MAX_COOL) {
+      return { FaultCode::Fault_HighPsiTooHigh, DiagnosticState::WeakPerformance };
+    }
+    if (p.lowSidePressurePsi < PSI_LOW_MIN_COOL) {
+      return { FaultCode::Fault_LowPsiTooLow, DiagnosticState::WeakPerformance };
+    }
+  }
+
+  // ---------- LINE TEMPS ----------
+  if (ok(suctionF) && suctionF <= SUCTION_FREEZE_F) {
+    return { FaultCode::Fault_SuctionLineFreezing, DiagnosticState::WeakPerformance };
+  }
+  if (ok(liquidF) && liquidF >= LIQUID_TOO_HOT_F) {
+    return { FaultCode::Fault_LiquidLineTooHot, DiagnosticState::WeakPerformance };
+  }
+
+  // ---------- SH / SC ----------
+  if (shsc.subcoolingF < SUBCOOL_LOW_F) {
+    return { FaultCode::Fault_SubcoolLow, DiagnosticState::WeakPerformance };
+  }
+  if (shsc.subcoolingF > SUBCOOL_HIGH_F) {
+    return { FaultCode::Fault_SubcoolHigh, DiagnosticState::WeakPerformance };
+  }
+  if (shsc.superheatF < SUPERHEAT_LOW_F) {
+    return { FaultCode::Fault_SuperheatLow, DiagnosticState::WeakPerformance };
+  }
+  if (shsc.superheatF > SUPERHEAT_HIGH_F) {
+    return { FaultCode::Fault_SuperheatHigh, DiagnosticState::WeakPerformance };
+  }
+
+  // ---------- COMBO PATTERNS (optional) ----------
+  if (shsc.subcoolingF < SUBCOOL_LOW_F && shsc.superheatF > SUPERHEAT_HIGH_F) {
+    return { FaultCode::Fault_LowChargePattern, DiagnosticState::WeakPerformance };
+  }
+  if (shsc.subcoolingF > SUBCOOL_HIGH_F && shsc.superheatF > SUPERHEAT_HIGH_F) {
+    return { FaultCode::Fault_RestrictionPattern, DiagnosticState::WeakPerformance };
+  }
+
+  return { FaultCode::None, DiagnosticState::Normal };
 }
 
-
-
+static FaultStatus faultStatus = { FaultCode::None, DiagnosticState::Unknown };
+//----------------------------------------------------------------------//
 
 
 // ===================== LOOP =====================
@@ -767,6 +936,17 @@ void loop() {
 
   // Update HVAC mode based on temps
   updateHvacModeFromTemperatures(hvacTemps, hvacState);
+  updateHvacPressures();
+  updateHvacSaturationTempsFromPressures();
+  updateHvacSuperheatSubcool();
+
+  faultStatus = evaluateFaultsHeatPump(hvacTemps, hvacPressures, hvacSatTemps, hvacShSc, hvacState.mode);
+  hvacState.diagnostic = faultStatus.diag;
+
+  const uint32_t nowMs = millis();
+  hvacPressures.updatedAtMs = nowMs;
+  hvacSatTemps.updatedAtMs = nowMs;
+  hvacShSc.updatedAtMs = nowMs;
 
   float adcVoltageA0 = NAN;
   float adcVoltageA1 = NAN;
@@ -777,10 +957,13 @@ void loop() {
   float sensorVoltageA0 = convertAdcPinVoltageToSensorVoltage(adcVoltageA0);
   float sensorVoltageA1 = convertAdcPinVoltageToSensorVoltage(adcVoltageA1);
 
+  
   // ---------- PRINTS ----------
   Serial.println("=== BEGIN MONITORING ===");
   Serial.println();
+  Serial.printf("MODE=%s  DIAG=%s\n", hvacModeToString(hvacState.mode), diagToString(hvacState.diagnostic));
   Serial.println();
+
   Serial.println("---- MAX31855 Raw/Decoded ----");
   printMax31855Reading("HighPressure", sensorHighPressure);
   printMax31855Reading("LowPressure ", sensorLowPressure);
@@ -793,31 +976,25 @@ void loop() {
   printTemperatureOrFaultF("Low Pressure Line ", hvacTemps.lowPressureLineTempC);
   printTemperatureOrFaultF("Supply Air        ", hvacTemps.supplyAirTempC);
   printTemperatureOrFaultF("Return Air        ", hvacTemps.returnAirTempC);
+
   if (!isnan(hvacTemps.deltaTempC)) {
-  float deltaTempF = deltaCelsiusToDeltaFahrenheit(hvacTemps.deltaTempC);
-  Serial.printf("DeltaT (Return-Supply): %.2f F\n", deltaTempF);
+    float deltaTempF = deltaCelsiusToDeltaFahrenheit(hvacTemps.deltaTempC);
+    Serial.printf("DeltaT (Return-Supply): %.2f F\n", deltaTempF);
   } else {
-  Serial.println("DeltaT (Return-Supply): FAULT");
+    Serial.println("DeltaT (Return-Supply): FAULT");
   }
 
   Serial.println();
 
   Serial.println("---- ADS1115 (Voltage) ----");
   if (a0Ok) Serial.printf("A0 TDH33 (after divider): %.3f V | sensor: %.3f V\n", adcVoltageA0, sensorVoltageA0);
-  else      Serial.println("A0 TDH33 read failed");
+    else      Serial.println("A0 TDH33 read failed");
 
   if (a1Ok) Serial.printf("A1 TD1000 (after divider): %.3f V | sensor: %.3f V\n", adcVoltageA1, sensorVoltageA1);
-  else      Serial.println("A1 TD1000 read failed");
+    else      Serial.println("A1 TD1000 read failed");
 
 
   Serial.println();
-
-
-  updateHvacPressures();
-  updateHvacSaturationTempsFromPressures();
-  updateHvacSuperheatSubcool();
-
-
   Serial.println("---- Pressures ----");
   printPressureOrFault("Low Side (A0 0-5V, 0-1000psi)", hvacPressures.lowSidePressurePsi);
   printPressureOrFault("High Side (A1 1-5V, 0-600psi)", hvacPressures.highSidePressurePsi);
@@ -832,15 +1009,24 @@ void loop() {
 
   Serial.println();
   Serial.println("---- Superheat / Subcooling ----");
-  printValueOrFaultF("Superheat (Suction - Sat Low)", hvacShSc.superheatF);
-  printValueOrFaultF("Subcool  (Sat High - Liquid)",  hvacShSc.subcoolingF);
+  printShScOrFault("Superheat (Suction - SatLow)", hvacShSc.superheatF);
+  printShScOrFault("Subcool  (SatHigh - Liquid)", hvacShSc.subcoolingF);
   Serial.printf("SH/SC updated at: %lu ms\n", (unsigned long)hvacShSc.updatedAtMs);
-  Serial.println();
-  Serial.println();
-  
-  
-  Serial.println("=== END MONITORING ===");
-  Serial.println();
 
-  delay(2000);
+  Serial.println();  
+  Serial.printf("MODE=%s  DIAG=%s  FAULT=%s\n",
+    hvacModeToString(hvacState.mode),
+    diagToString(hvacState.diagnostic),
+    faultCodeToString(faultStatus.code));
+
+  Serial.println();
+  Serial.println("=== END MONITORING ===");
+
+    delay(2000);
 }
+
+
+// github commit message example:
+// git add .
+// git commit -m ' xxx '
+// git push origin main
