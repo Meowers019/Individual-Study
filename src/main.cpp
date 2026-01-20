@@ -43,6 +43,18 @@ enum class DiagnosticState : uint8_t { // is it behaving correctly?
   WeakPerformance,
   Unknown
 };
+
+enum class HvacSystemState : uint8_t {
+  Off = 0,
+  Running
+};
+
+// Placeholder for future fault substates (you’ll expand later)
+enum class HvacSubstate : uint8_t {
+  None = 0,
+  Unknown
+};
+
 //----------------------------------------------------------------------//
 
 
@@ -72,13 +84,21 @@ static const char* diagToString(DiagnosticState diag) {
 // ===================== HVAC STATE =====================
 // Will expand later with more diagnostic info, timers, etc.
 struct HvacState {
-  HvacMode mode;
+  HvacSystemState systemState; // OFF/RUNNING (based on deltaT OR deltaPsi)
+  HvacMode mode;               // Off/Cooling/Heating (what kind of running)
+  HvacSubstate substate;       // future: fault subcases
   DiagnosticState diagnostic;
   uint32_t lastModeChangeMs;
 };
 
 // Start conservative
-static HvacState hvacState = { HvacMode::Off, DiagnosticState::Unknown, 0 };
+static HvacState hvacState = {
+  HvacSystemState::Off,
+  HvacMode::Off,
+  HvacSubstate::None,
+  DiagnosticState::Unknown,
+  0
+};
 //----------------------------------------------------------------------//
 
 
@@ -123,6 +143,8 @@ static void initADS1115() {
     Serial.println("WARNING: ADS1115 not responding");
   }
 }
+//----------------------------------------------------------------------//
+
 
 // ===================== ADS1115 (ADC) HELPERS =====================
 // NOTE: ADS1115 has a full-scale range that depends on PGA gain.
@@ -403,6 +425,15 @@ static constexpr float SUPPLY_HEAT_MIN_C    = 30.0f; // supply >= 30C supports h
 
 static constexpr int   MODE_CONFIRM_COUNT   = 3;    // require N consecutive confirmations
 
+// ===================== RUNNING DETECTION =====================
+// Placeholders you will tune later:
+static constexpr float RUNNING_DELTA_T_C_THRESHOLD  = 0.6f;   // ~1.1F
+static constexpr float RUNNING_DELTA_PSI_THRESHOLD  = 25.0f;
+
+static float absf_safe(float v) { return (v < 0.0f) ? -v : v; }
+static bool okf(float v) { return !isnan(v); }
+
+
 static bool isValidTemp(float t) { return !isnan(t); }
 
 static void updateHvacModeFromTemperatures(const HvacTemperatures& temps, HvacState& state) {
@@ -410,8 +441,14 @@ static void updateHvacModeFromTemperatures(const HvacTemperatures& temps, HvacSt
   static int heatingConfirmCount = 0;
   static int offConfirmCount     = 0;
 
+  // NEW: if system isn't running, don't try to decide cooling/heating
+  if (state.systemState != HvacSystemState::Running) {
+    state.mode = HvacMode::Off;
+    return;
+  }
+
+  // you also need this validity guard back (or you’ll compare NANs)
   if (!isValidTemp(temps.supplyAirTempC) || !isValidTemp(temps.returnAirTempC) || isnan(temps.deltaTempC)) {
-    // If we can’t trust temps, don’t guess aggressively
     state.diagnostic = DiagnosticState::SensorFault;
     return;
   }
@@ -449,6 +486,69 @@ static void updateHvacModeFromTemperatures(const HvacTemperatures& temps, HvacSt
   // Basic diagnostic placeholder (you’ll expand this later)
   state.diagnostic = DiagnosticState::Normal;
 }
+
+// ===================== PSI READINGS =====================
+// Pressures in PSI (computed from ADS1115 voltages + divider undo).
+struct HvacPressures {
+  float lowSidePressurePsi;    // TDH33 on ADS1115 A0
+  float highSidePressurePsi;   // TD1000 on ADS1115 A1
+  uint32_t updatedAtMs;        // millis() when these pressures were updated
+};
+
+// Portable, explicit initialization
+static HvacPressures hvacPressures = {
+  NAN, // lowSidePressurePsi
+  NAN, // highSidePressurePsi
+  0    // updatedAtMs
+};
+
+static void updateHvacRunStateFromDeltaTOrDeltaPsi(
+  const HvacTemperatures& t,
+  const HvacPressures& p,
+  HvacState& s
+) {
+  // deltaT_C is Return - Supply (already computed in your loop)
+  const bool deltaTOk = okf(t.deltaTempC);
+
+  // deltaPsi = High - Low
+  const float deltaPsi =
+    (okf(p.highSidePressurePsi) && okf(p.lowSidePressurePsi))
+      ? (p.highSidePressurePsi - p.lowSidePressurePsi)
+      : NAN;
+
+  const bool deltaPsiOk = okf(deltaPsi);
+
+  // If neither metric exists, don't guess
+  if (!deltaTOk && !deltaPsiOk) {
+    s.diagnostic = DiagnosticState::SensorFault;
+    return;
+  }
+
+  const bool runningByDeltaT   = deltaTOk   && (absf_safe(t.deltaTempC) >= RUNNING_DELTA_T_C_THRESHOLD);
+  const bool runningByDeltaPsi = deltaPsiOk && (absf_safe(deltaPsi)     >= RUNNING_DELTA_PSI_THRESHOLD);
+
+  const HvacSystemState newSys = (runningByDeltaT || runningByDeltaPsi)
+    ? HvacSystemState::Running
+    : HvacSystemState::Off;
+
+  // Transition handling
+  if (newSys != s.systemState) {
+    s.systemState = newSys;
+    s.lastModeChangeMs = millis();
+  }
+
+  // If system is OFF, force mode OFF for now (you said we'll revisit OFF logic later)
+  if (s.systemState == HvacSystemState::Off) {
+    s.mode = HvacMode::Off;
+    s.substate = HvacSubstate::None;
+  }
+
+  // Don’t overwrite diagnostic here if it was already set to SensorFault by other code
+  if (s.diagnostic == DiagnosticState::Unknown) {
+    s.diagnostic = DiagnosticState::Normal;
+  }
+}
+
 //----------------------------------------------------------------------//
 
 
@@ -466,20 +566,6 @@ void setup() {
 }
 //----------------------------------------------------------------------//
 
-// ===================== PSI READINGS =====================
-// Pressures in PSI (computed from ADS1115 voltages + divider undo).
-struct HvacPressures {
-  float lowSidePressurePsi;    // TDH33 on ADS1115 A0
-  float highSidePressurePsi;   // TD1000 on ADS1115 A1
-  uint32_t updatedAtMs;        // millis() when these pressures were updated
-};
-
-// Portable, explicit initialization
-static HvacPressures hvacPressures = {
-  NAN, // lowSidePressurePsi
-  NAN, // highSidePressurePsi
-  0    // updatedAtMs
-};
 
 // ===================== PRESSURE SENSOR CONSTANTS =====================
 
@@ -803,7 +889,9 @@ static FaultStatus evaluateFaultsHeatPump(const HvacTemperatures& t,
                                          const HvacPressures& p,
                                          const HvacSaturationTemps& sat,
                                          const HvacShSc& shsc,
-                                         HvacMode mode) {
+                                         HvacSystemState sys,
+                                         HvacMode mode)
+ {
 
   // ---------- PLACEHOLDER THRESHOLDS (tune later) ----------
   static constexpr float PSI_HIGH_MAX_COOL = 500.0f;   // X
@@ -846,9 +934,11 @@ static FaultStatus evaluateFaultsHeatPump(const HvacTemperatures& t,
   }
 
   // If OFF: you might only want “static equalization” checks later.
-  if (mode == HvacMode::Off) {
+  // If truly OFF, skip faults for now (you said you’ll revisit OFF logic later)
+  if (sys == HvacSystemState::Off) {
     return { FaultCode::None, DiagnosticState::Normal };
   }
+
 
   // ---------- DELTA-T (system performance / airflow) ----------
   if (ok(deltaTF) && fabsf(deltaTF) <= DELTAT_ZERO_F) {
@@ -935,18 +1025,23 @@ void loop() {
   hvacTemps.updatedAtMs = millis();
 
   // Update HVAC mode based on temps
-  updateHvacModeFromTemperatures(hvacTemps, hvacState);
+  // Reset per loop (optional)
+  hvacState.diagnostic = DiagnosticState::Unknown;
+  // Make pressures fresh first (for deltaPsi running detect)
   updateHvacPressures();
+  // Decide RUNNING/OFF from deltaT OR deltaPsi
+  updateHvacRunStateFromDeltaTOrDeltaPsi(hvacTemps, hvacPressures, hvacState);
+  // If running, decide Cooling/Heating from temps
+  updateHvacModeFromTemperatures(hvacTemps, hvacState);
   updateHvacSaturationTempsFromPressures();
   updateHvacSuperheatSubcool();
 
-  faultStatus = evaluateFaultsHeatPump(hvacTemps, hvacPressures, hvacSatTemps, hvacShSc, hvacState.mode);
+  faultStatus = evaluateFaultsHeatPump(hvacTemps, hvacPressures, hvacSatTemps, hvacShSc,
+                                     hvacState.systemState, hvacState.mode);
+
   hvacState.diagnostic = faultStatus.diag;
 
   const uint32_t nowMs = millis();
-  hvacPressures.updatedAtMs = nowMs;
-  hvacSatTemps.updatedAtMs = nowMs;
-  hvacShSc.updatedAtMs = nowMs;
 
   float adcVoltageA0 = NAN;
   float adcVoltageA1 = NAN;
@@ -961,7 +1056,10 @@ void loop() {
   // ---------- PRINTS ----------
   Serial.println("=== BEGIN MONITORING ===");
   Serial.println();
-  Serial.printf("MODE=%s  DIAG=%s\n", hvacModeToString(hvacState.mode), diagToString(hvacState.diagnostic));
+  Serial.printf("SYS=%s  MODE=%s  DIAG=%s\n",
+  (hvacState.systemState == HvacSystemState::Running) ? "RUNNING" : "OFF",
+  hvacModeToString(hvacState.mode),
+  diagToString(hvacState.diagnostic));
   Serial.println();
 
   Serial.println("---- MAX31855 Raw/Decoded ----");
