@@ -16,10 +16,10 @@ static constexpr uint8_t SPI_CLOCK_PIN    = 18;
 static constexpr uint8_t SPI_MISO_DO_PIN  = 19;   // DO/MISO (shared)
 
 // MAX31855 Chip Select pins
-static constexpr uint8_t MAX31855_CS_HIGH_PRESSURE = 16;  // Flag on PCB to correctly install
-static constexpr uint8_t MAX31855_CS_LOW_PRESSURE  = 17;  // Flag on PCB to correctly install
-static constexpr uint8_t MAX31855_CS_SUPPLY_AIR    = 26;  // Flag on PCB to correctly install
-static constexpr uint8_t MAX31855_CS_RETURN_AIR    = 27;  // Flag on PCB to correctly install
+static constexpr uint8_t MAX31855_CS_HIGH_PRESSURE = 16;  // Good cable
+static constexpr uint8_t MAX31855_CS_LOW_PRESSURE  = 17;  // Good cable
+static constexpr uint8_t MAX31855_CS_SUPPLY_AIR    = 26;  // Shit cable
+static constexpr uint8_t MAX31855_CS_RETURN_AIR    = 27;  // Shit cable
 
 // SPI configuration for MAX31855
 static const SPISettings MAX31855_SPI_SETTINGS(
@@ -114,6 +114,14 @@ struct HvacTemperatures {
   float deltaTempC;            // Return - Supply (°C)
   uint32_t updatedAtMs;
 };
+
+// ===================== TEMP CALIBRATION =====================
+// +XX°F offset converted to Celsius: 20 * 5 / 9 ≈ 11.11°C
+// Shitty cables that need replacement
+static constexpr float SUPPLY_TEMP_OFFSET_C = 1.0f * 5.0f / 9.0f;
+static constexpr float RETURN_TEMP_OFFSET_C = 1.0f * 5.0f / 9.0f;
+
+
 
 // Portable, explicit initialization
 static HvacTemperatures hvacTemps = {
@@ -572,7 +580,7 @@ void setup() {
 // Voltage divider: sensor -> 10k -> ADC -> 20k -> GND
 // Vadc = Vsensor * (20k / (10k+20k)) = Vsensor * (2/3)
 // Vsensor = Vadc * (3/2)
-// A0 - TDH33 (0-1000 PSI), A1 - TD1000 (0-600 PSI)
+// A0 - TDH33 (0-1000 PSI - 0-5V), A1 - TD1000 (0-600 PSI - 1-5V)
 
 // A0 sensor: 0-5V => 0-1000 PSI
 static constexpr float PRESSURE_SENSOR_A0_FULL_SCALE_PSI = 1000.0f;
@@ -1075,10 +1083,30 @@ void loop() {
   Max31855Reading sensorReturnAir    = readMax31855Filtered(MAX31855_CS_RETURN_AIR);
 
   // Map thermocouple temps into HVAC temps
-  hvacTemps.highPressureLineTempC = sensorHighPressure.thermocoupleTempC;
+  /**hvacTemps.highPressureLineTempC = sensorHighPressure.thermocoupleTempC;
   hvacTemps.lowPressureLineTempC  = sensorLowPressure.thermocoupleTempC;
   hvacTemps.supplyAirTempC        = sensorSupplyAir.thermocoupleTempC;
-  hvacTemps.returnAirTempC        = sensorReturnAir.thermocoupleTempC;
+  hvacTemps.returnAirTempC        = sensorReturnAir.thermocoupleTempC;**/
+  
+  hvacTemps.highPressureLineTempC = sensorHighPressure.thermocoupleTempC;
+  hvacTemps.lowPressureLineTempC  = sensorLowPressure.thermocoupleTempC;
+
+  // Supply Air (calibrated)
+  if (!isnan(sensorSupplyAir.thermocoupleTempC)) {
+    hvacTemps.supplyAirTempC =
+        sensorSupplyAir.thermocoupleTempC + SUPPLY_TEMP_OFFSET_C;
+  } else {
+    hvacTemps.supplyAirTempC = NAN;
+  }
+
+  // Return Air (calibrated)
+  if (!isnan(sensorReturnAir.thermocoupleTempC)) {
+    hvacTemps.returnAirTempC =
+        sensorReturnAir.thermocoupleTempC + RETURN_TEMP_OFFSET_C;
+  } else {
+    hvacTemps.returnAirTempC = NAN;
+  }
+
 
   // Compute deltaTempC = return - supply
   if (!isnan(hvacTemps.returnAirTempC) && !isnan(hvacTemps.supplyAirTempC)) {
