@@ -1,6 +1,7 @@
 // ===================== ESP32 HVAC MONITORING SYSTEM =====================
 // Modular architecture for HVAC diagnostics and monitoring
 // Prepared for WiFi/ESPHome/Home Assistant integration
+// Testing Testing
 
 #include <Arduino.h>
 #include <Wire.h>
