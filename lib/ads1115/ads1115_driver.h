@@ -1,13 +1,14 @@
-#ifndef ADS1115_H
-#define ADS1115_H
+#ifndef ADS1115_DRIVER_H
+#define ADS1115_DRIVER_H
 
 #include <Arduino.h>
 #include <Wire.h>
 #include "hvac_config.h"
 #include <Adafruit_ADS1X15.h>
 
+extern Adafruit_ADS1115 ads;
+
 // ===================== I2C HELPERS =====================
-inline bool isI2CDevicePresent(TwoWire &bus, uint8_t address);
 inline void initADS1115();
 
 // ===================== REGISTER ACCESS =====================

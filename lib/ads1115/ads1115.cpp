@@ -1,25 +1,21 @@
 #include "ads1115.h"
 
-// ===================== I2C HELPERS =====================
-inline bool isI2CDevicePresent(TwoWire &bus, uint8_t address)
-{
-    bus.beginTransmission(address);
-    return (bus.endTransmission() == 0);
-}
+Adafruit_ADS1115 ads;
 
+// ===================== I2C HELPERS =====================
 inline void initADS1115()
 {
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-    Wire.setClock(400000); // 400 kHz I2C fast mode
+    if (!ads.begin())
+    {
+        Serial.println("Failed to initialize ADS.");
+        while (1)
+            ;
+    }
 
-    if (isI2CDevicePresent(Wire, ADS1115_I2C_ADDRESS))
-    {
-        Serial.println("ADS1115 detected");
-    }
-    else
-    {
-        Serial.println("WARNING: ADS1115 not responding");
-    }
+    // ads.setDataRate();
+    ads.setGain(GAIN_ONE); // set 4.096V
+
+    Serial.println("ADS1115 initialized");
 }
 
 // ===================== REGISTER ACCESS =====================
@@ -49,11 +45,12 @@ inline bool ads1115ReadRegister16(uint8_t i2cAddress, uint16_t reg, uint16_t &ou
 }
 
 // ===================== CONVERSION =====================
-inline float ads1115CountsToVolts(int16_t counts, float fullScaleVolts)
+inline float ads1115CountsToVolts(int16_t counts)
 {
     // ADS1115 is 16-bit signed. Full scale is ±fullScaleVolts
     // LSB size = fullScaleVolts / 32768
-    return (float)counts * (fullScaleVolts / 32768.0f);
+    return ads.computeVolts(counts);
+    // return (float)counts * (fullScaleVolts / 32768.0f);
 }
 
 // ===================== CHANNEL READING =====================
@@ -76,16 +73,16 @@ inline bool readAds1115SingleEndedCounts(uint8_t channel, int16_t &outCounts)
         RATE_ADS1015_128SPS |            // Data rate
         ADS1X15_REG_CONFIG_CQUE_NONE;    // Comparator disabled
 
-    if (!ads1115WriteRegister16(ADS1115_I2C_ADDRESS, ADS1X15_REG_POINTER_CONFIG, config))
+    if (!ads1115WriteRegister16(ADS1X15_ADDRESS, ADS1X15_REG_POINTER_CONFIG, config))
     {
         return false;
     }
 
     // Wait for conversion at 128 SPS (~7.8ms)
-    delay(ADS1115_CONVERSION_DELAY_MS);
+    delay(RATE_ADS1015_128SPS);
 
     uint16_t rawConversion = 0;
-    if (!ads1115ReadRegister16(ADS1115_I2C_ADDRESS, ADS1X15_REG_POINTER_CONVERT, rawConversion))
+    if (!ads1115ReadRegister16(ADS1X15_ADDRESS, ADS1X15_REG_POINTER_CONVERT, rawConversion))
     {
         return false;
     }
@@ -105,7 +102,7 @@ inline bool readAds1115ChannelVoltageAtAdcPin(uint8_t channel, float &outVoltage
     }
 
     // For PGA ±4.096V
-    outVoltageAtAdcPin = ads1115CountsToVolts(counts, ADS1115_PGA_VOLTAGE);
+    outVoltageAtAdcPin = ads1115CountsToVolts(counts);
     return true;
 }
 
