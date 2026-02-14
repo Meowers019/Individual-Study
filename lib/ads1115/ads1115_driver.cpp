@@ -1,4 +1,4 @@
-#include "ads1115.h"
+#include "ads1115_driver.h"
 
 Adafruit_ADS1115 ads;
 
@@ -12,7 +12,6 @@ inline void initADS1115()
             ;
     }
 
-    // ads.setDataRate();
     ads.setGain(GAIN_ONE); // set 4.096V
 
     Serial.println("ADS1115 initialized");
