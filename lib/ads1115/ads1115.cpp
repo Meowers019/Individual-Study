@@ -69,12 +69,12 @@ inline bool readAds1115SingleEndedCounts(uint8_t channel, int16_t &outCounts)
 
     // Build config: start conversion, single-shot, ±4.096V, 128 SPS
     uint16_t config =
-        0x8000 |                  // OS = 1 (start conversion)
-        muxBits |                 // MUX = single-ended channel
-        ADS1115_PGA_4_096V |      // PGA = ±4.096V
-        ADS1115_MODE_SINGLESHOT | // Single-shot mode
-        ADS1115_DR_128SPS |       // Data rate
-        ADS1115_COMP_DISABLE;     // Comparator disabled
+        0x8000 |                         // OS = 1 (start conversion)
+        muxBits |                        // MUX = single-ended channel
+        ADS1X15_REG_CONFIG_PGA_4_096V |  // PGA = ±4.096V
+        ADS1X15_REG_CONFIG_MODE_SINGLE | // Single-shot mode
+        RATE_ADS1015_128SPS |            // Data rate
+        ADS1X15_REG_CONFIG_CQUE_NONE;    // Comparator disabled
 
     if (!ads1115WriteRegister16(ADS1115_I2C_ADDRESS, ADS1X15_REG_POINTER_CONFIG, config))
     {

@@ -6,18 +6,6 @@
 #include "hvac_config.h"
 #include <Adafruit_ADS1X15.h>
 
-// ===================== ADS1115 ADC DRIVER =====================
-
-// Register addresses
-static constexpr uint16_t ADS1115_REG_CONVERSION = 0x00;
-static constexpr uint16_t ADS1115_REG_CONFIG = 0x01;
-
-// Configuration register bits
-static constexpr uint16_t ADS1115_PGA_4_096V = 0x0200;      // ±4.096V range
-static constexpr uint16_t ADS1115_MODE_SINGLESHOT = 0x0100; // Single-shot mode
-static constexpr uint16_t ADS1115_DR_128SPS = 0x0080;       // 128 samples/sec
-static constexpr uint16_t ADS1115_COMP_DISABLE = 0x0003;    // Comparator disabled
-
 // ===================== I2C HELPERS =====================
 inline bool isI2CDevicePresent(TwoWire &bus, uint8_t address);
 inline void initADS1115();
@@ -60,4 +48,4 @@ inline bool readPressureSensorA1Psi(float &outPressurePsi);
 // ===================== PRINTING =====================
 inline void printPressureOrFault(const char *label, float pressurePsi);
 
-#endif ADS1115_H
+#endif
