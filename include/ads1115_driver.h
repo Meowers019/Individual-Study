@@ -1,6 +1,12 @@
-#include "ads1115_driver.h"
+#ifndef ADS1115_DRIVER_H
+#define ADS1115_DRIVER_H
 
-Adafruit_ADS1115 ads;
+#include <Arduino.h>
+#include <Wire.h>
+#include "hvac_config.h"
+#include <Adafruit_ADS1X15.h>
+
+extern Adafruit_ADS1115 ads;
 
 // ===================== I2C HELPERS =====================
 inline void initADS1115()
@@ -43,15 +49,6 @@ inline bool ads1115ReadRegister16(uint8_t i2cAddress, uint16_t reg, uint16_t &ou
     return true;
 }
 
-// ===================== CONVERSION =====================
-inline float ads1115CountsToVolts(int16_t counts)
-{
-    // ADS1115 is 16-bit signed. Full scale is ±fullScaleVolts
-    // LSB size = fullScaleVolts / 32768
-    return ads.computeVolts(counts);
-    // return (float)counts * (fullScaleVolts / 32768.0f);
-}
-
 // ===================== CHANNEL READING =====================
 // Read single-ended channel (0-3) in single-shot mode
 inline bool readAds1115SingleEndedCounts(uint8_t channel, int16_t &outCounts)
@@ -89,7 +86,6 @@ inline bool readAds1115SingleEndedCounts(uint8_t channel, int16_t &outCounts)
     outCounts = (int16_t)rawConversion;
     return true;
 }
-
 // Read channel voltage at ADC pin (after voltage divider)
 inline bool readAds1115ChannelVoltageAtAdcPin(uint8_t channel, float &outVoltageAtAdcPin)
 {
@@ -101,7 +97,7 @@ inline bool readAds1115ChannelVoltageAtAdcPin(uint8_t channel, float &outVoltage
     }
 
     // For PGA ±4.096V
-    outVoltageAtAdcPin = ads1115CountsToVolts(counts);
+    outVoltageAtAdcPin = ads.computeVolts(counts);
     return true;
 }
 
@@ -154,7 +150,6 @@ inline float applyPsiDeadband(float psi, float deadbandPsi = PSI_DEADBAND)
         return NAN;
     return (psi < deadbandPsi) ? 0.0f : psi;
 }
-
 // ===================== SENSOR-SPECIFIC READERS =====================
 // A0: TDH33 (0-1000 PSI, 0-5V)
 inline bool readPressureSensorA0Psi(float &outPressurePsi)
@@ -214,3 +209,4 @@ inline void printPressureOrFault(const char *label, float pressurePsi)
         Serial.printf("%s: %.1f PSI\n", label, pressurePsi);
     }
 }
+#endif

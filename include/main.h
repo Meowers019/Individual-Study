@@ -16,6 +16,8 @@
 #include "hvac_diagnostics.h"
 #include "hvac_test_data.h"
 
+#define SERIAL_BAUD_RATE 115200
+
 // ===================== GLOBAL STATE =====================
 static HvacState hvacState = {
     HvacSystemState::Off,
