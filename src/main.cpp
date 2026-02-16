@@ -7,8 +7,9 @@
 // ===================== SETUP =====================
 void setup()
 {
-  Serial.begin(115200);
-  delay(200);
+  Serial.begin(SERIAL_BAUD_RATE);
+  while (!Serial)
+    ;
 
   Serial.println("\n=== HVAC ESP32 Monitoring System ===");
   Serial.println("Modular architecture - Ready for WiFi integration");
