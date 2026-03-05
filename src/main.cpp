@@ -5,8 +5,7 @@
 #include "main.h"
 
 // ===================== SETUP =====================
-void setup()
-{
+void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   while (!Serial)
     ;
@@ -34,13 +33,10 @@ void setup()
   // printTestScenarioList();  // Show all available scenarios
 
   // ===================== HARDWARE INIT =====================
-  if (!TEST_MODE_ENABLED)
-  {
-    initADS1115();
+  if (!TEST_MODE_ENABLED) {
+    ads.begin();
     initMax31855Bus();
-  }
-  else
-  {
+  } else {
     Serial.println("Skipping hardware initialization (TEST MODE)");
   }
 
@@ -48,23 +44,19 @@ void setup()
 }
 
 // ===================== LOOP =====================
-void loop()
-{
+void loop() {
   // Declare sensor readings (used for live mode only)
-  Max31855Reading sensorHighPressure = {};
-  Max31855Reading sensorLowPressure = {};
-  Max31855Reading sensorSupplyAir = {};
-  Max31855Reading sensorReturnAir = {};
+  Max31855Reading sensorHighPressure{};
+  Max31855Reading sensorLowPressure{};
+  Max31855Reading sensorSupplyAir{};
+  Max31855Reading sensorReturnAir{};
 
   // ---------- READ THERMOCOUPLES (or use test data) ----------
-  if (TEST_MODE_ENABLED)
-  {
+  if (TEST_MODE_ENABLED) {
     // Use simulated test data
     applyTestDataToHvacTemps(hvacTemps);
     applyTestDataToHvacPressures(hvacPressures);
-  }
-  else
-  {
+  } else {
     // Read actual hardware sensors
     sensorHighPressure = readMax31855Filtered(MAX31855_CS_HIGH_PRESSURE);
     sensorLowPressure = readMax31855Filtered(MAX31855_CS_LOW_PRESSURE);
@@ -76,31 +68,25 @@ void loop()
     hvacTemps.lowPressureLineTempC = sensorLowPressure.thermocoupleTempC;
 
     // Apply calibration offsets to supply/return air
-    if (!isnan(sensorSupplyAir.thermocoupleTempC))
-    {
-      hvacTemps.supplyAirTempC = sensorSupplyAir.thermocoupleTempC + SUPPLY_TEMP_OFFSET_C;
-    }
-    else
-    {
+    if (!isnan(sensorSupplyAir.thermocoupleTempC)) {
+      hvacTemps.supplyAirTempC =
+          sensorSupplyAir.thermocoupleTempC + SUPPLY_TEMP_OFFSET_C;
+    } else {
       hvacTemps.supplyAirTempC = NAN;
     }
 
-    if (!isnan(sensorReturnAir.thermocoupleTempC))
-    {
-      hvacTemps.returnAirTempC = sensorReturnAir.thermocoupleTempC + RETURN_TEMP_OFFSET_C;
-    }
-    else
-    {
+    if (!isnan(sensorReturnAir.thermocoupleTempC)) {
+      hvacTemps.returnAirTempC =
+          sensorReturnAir.thermocoupleTempC + RETURN_TEMP_OFFSET_C;
+    } else {
       hvacTemps.returnAirTempC = NAN;
     }
 
     // Compute delta-T (Return - Supply)
-    if (!isnan(hvacTemps.returnAirTempC) && !isnan(hvacTemps.supplyAirTempC))
-    {
-      hvacTemps.deltaTempC = hvacTemps.returnAirTempC - hvacTemps.supplyAirTempC;
-    }
-    else
-    {
+    if (!isnan(hvacTemps.returnAirTempC) && !isnan(hvacTemps.supplyAirTempC)) {
+      hvacTemps.deltaTempC =
+          hvacTemps.returnAirTempC - hvacTemps.supplyAirTempC;
+    } else {
       hvacTemps.deltaTempC = NAN;
     }
     hvacTemps.updatedAtMs = millis();
@@ -122,27 +108,25 @@ void loop()
 
   // ---------- EVALUATE FAULTS ----------
   faultReport = evaluateFaultsHeatPumpAll(
-      hvacTemps, hvacPressures, hvacSatTemps, hvacShSc,
-      hvacState.systemState, hvacState.mode);
+      hvacTemps, hvacPressures, hvacSatTemps, hvacShSc, hvacState.systemState,
+      hvacState.mode);
 
   hvacState.diagnostic = faultReport.diag;
 
   // ===================== SERIAL OUTPUT =====================
   Serial.println("=== BEGIN MONITORING ===");
-  if (TEST_MODE_ENABLED)
-  {
+  if (TEST_MODE_ENABLED) {
     Serial.printf("*** TEST MODE: %s ***\n", getActiveTestData().description);
   }
   Serial.println();
-  Serial.printf("SYS=%s  MODE=%s  DIAG=%s\n",
-                (hvacState.systemState == HvacSystemState::Running) ? "RUNNING" : "OFF",
-                hvacModeToString(hvacState.mode),
-                diagToString(hvacState.diagnostic));
+  Serial.printf(
+      "SYS=%s  MODE=%s  DIAG=%s\n",
+      (hvacState.systemState == HvacSystemState::Running) ? "RUNNING" : "OFF",
+      hvacModeToString(hvacState.mode), diagToString(hvacState.diagnostic));
   Serial.println();
 
   // Skip MAX31855 raw readings in test mode
-  if (!TEST_MODE_ENABLED)
-  {
+  if (!TEST_MODE_ENABLED) {
     Serial.println("---- MAX31855 Raw/Decoded ----");
     printMax31855Reading("HighPressure", sensorHighPressure);
     printMax31855Reading("LowPressure ", sensorLowPressure);
@@ -152,66 +136,57 @@ void loop()
   }
 
   Serial.println("---- HVAC Temps (Thermocouple TC) ----");
-  printTemperatureOrFaultF("High Pressure Line", hvacTemps.highPressureLineTempC);
-  printTemperatureOrFaultF("Low Pressure Line ", hvacTemps.lowPressureLineTempC);
+  printTemperatureOrFaultF("High Pressure Line",
+                           hvacTemps.highPressureLineTempC);
+  printTemperatureOrFaultF("Low Pressure Line ",
+                           hvacTemps.lowPressureLineTempC);
   printTemperatureOrFaultF("Supply Air        ", hvacTemps.supplyAirTempC);
   printTemperatureOrFaultF("Return Air        ", hvacTemps.returnAirTempC);
 
-  if (!isnan(hvacTemps.deltaTempC))
-  {
+  if (!isnan(hvacTemps.deltaTempC)) {
     float deltaTempF = deltaCelsiusToDeltaFahrenheit(hvacTemps.deltaTempC);
     Serial.printf("DeltaT (Return-Supply): %.2f F\n", deltaTempF);
-  }
-  else
-  {
+  } else {
     Serial.println("DeltaT (Return-Supply): FAULT");
   }
   Serial.println();
 
   // Skip ADC voltage details in test mode
-  if (!TEST_MODE_ENABLED)
-  {
+  if (!TEST_MODE_ENABLED) {
     float adcVoltageA0 = NAN;
     float adcVoltageA1 = NAN;
-    bool a0Ok = readAds1115ChannelVoltageAtAdcPin(0, adcVoltageA0);
-    bool a1Ok = readAds1115ChannelVoltageAtAdcPin(1, adcVoltageA1);
-    float sensorVoltageA0 = convertAdcPinVoltageToSensorVoltage(adcVoltageA0);
-    float sensorVoltageA1 = convertAdcPinVoltageToSensorVoltage(adcVoltageA1);
+    bool a0Ok = ads.readRaw(0, adcVoltageA0);
+    bool a1Ok = ads.readRaw(1, adcVoltageA1);
+    float sensorVoltageA0 = ads.rawToVolt(adcVoltageA0);
+    float sensorVoltageA1 = ads.rawToVolt(adcVoltageA1);
 
     Serial.println("---- ADS1115 (Voltage) ----");
-    if (a0Ok)
-    {
+    if (a0Ok) {
       Serial.printf("A0 TDH33 (after divider): %.3f V | sensor: %.3f V\n",
                     adcVoltageA0, sensorVoltageA0);
-    }
-    else
-    {
+    } else {
       Serial.println("A0 TDH33 read failed");
     }
 
-    if (a1Ok)
-    {
+    if (a1Ok) {
       Serial.printf("A1 TD1000 (after divider): %.3f V | sensor: %.3f V\n",
                     adcVoltageA1, sensorVoltageA1);
-    }
-    else
-    {
+    } else {
       Serial.println("A1 TD1000 read failed");
     }
     Serial.println();
   }
 
   Serial.println("---- Pressures ----");
-  printPressureOrFault("Low Side (A0 0-5V, 0-1000psi)", hvacPressures.lowSidePressurePsi);
-  printPressureOrFault("High Side (A1 1-5V, 0-600psi)", hvacPressures.highSidePressurePsi);
+  printPressureOrFault("Low Side (A0 0-5V, 0-1000psi)",
+                       hvacPressures.lowSidePressurePsi);
+  printPressureOrFault("High Side (A1 1-5V, 0-600psi)",
+                       hvacPressures.highSidePressurePsi);
 
   float deltaPsi = computeDeltaPsi(hvacPressures);
-  if (isnan(deltaPsi))
-  {
+  if (isnan(deltaPsi)) {
     Serial.println("DeltaPsi (High-Low): FAULT");
-  }
-  else
-  {
+  } else {
     Serial.printf("DeltaPsi (High-Low): %.1f PSI\n", deltaPsi);
   }
   Serial.println();
@@ -226,8 +201,7 @@ void loop()
   printShScOrFault("Subcool  (SatHigh - Liquid)", hvacShSc.subcoolingF);
   Serial.println();
 
-  Serial.printf("MODE=%s  DIAG=%s\n",
-                hvacModeToString(hvacState.mode),
+  Serial.printf("MODE=%s  DIAG=%s\n", hvacModeToString(hvacState.mode),
                 diagToString(hvacState.diagnostic));
   printFaultReportLines(faultReport);
   Serial.println();
