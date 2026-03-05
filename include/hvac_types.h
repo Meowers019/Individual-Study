@@ -4,11 +4,7 @@
 #include <stdint.h>
 
 // ===================== HVAC ENUMS =====================
-enum class HvacMode : uint8_t {
-  Off = 0,
-  Cooling,
-  Heating
-};
+enum class HvacMode : uint8_t { Off = 0, Cooling, Heating };
 
 enum class DiagnosticState : uint8_t {
   Normal = 0,
@@ -17,15 +13,9 @@ enum class DiagnosticState : uint8_t {
   Unknown
 };
 
-enum class HvacSystemState : uint8_t {
-  Off = 0,
-  Running
-};
+enum class HvacSystemState : uint8_t { Off = 0, Running };
 
-enum class HvacSubstate : uint8_t {
-  None = 0,
-  Unknown
-};
+enum class HvacSubstate : uint8_t { None = 0, Unknown };
 
 // ===================== FAULT CODES =====================
 enum class FaultCode : uint16_t {
@@ -64,43 +54,43 @@ enum class FaultCode : uint16_t {
 
 // ===================== STRUCTURES =====================
 struct HvacState {
-  HvacSystemState systemState;
-  HvacMode mode;
-  HvacSubstate substate;
-  DiagnosticState diagnostic;
-  uint32_t lastModeChangeMs;
+  HvacSystemState systemState = HvacSystemState::Off;
+  HvacMode mode = HvacMode::Off;
+  HvacSubstate substate = HvacSubstate::None;
+  DiagnosticState diagnostic = DiagnosticState::Unknown;
+  uint32_t lastModeChangeMs = 0;
 };
 
 struct HvacTemperatures {
-  float highPressureLineTempC;  // Liquid line (condenser outlet) in °C
-  float lowPressureLineTempC;   // Suction line (evaporator outlet) in °C
-  float supplyAirTempC;         // Supply duct air temp in °C
-  float returnAirTempC;         // Return duct air temp in °C
-  float deltaTempC;             // Return - Supply (°C)
-  uint32_t updatedAtMs;
+  float highPressureLineTempC = NAN; // Liquid line (condenser outlet) in °C
+  float lowPressureLineTempC = NAN;  // Suction line (evaporator outlet) in °C
+  float supplyAirTempC = NAN;        // Supply duct air temp in °C
+  float returnAirTempC = NAN;        // Return duct air temp in °C
+  float deltaTempC = NAN;            // Return - Supply (°C)
+  uint32_t updatedAtMs = 0;
 };
 
 struct HvacPressures {
-  float lowSidePressurePsi;     // Low side pressure in PSI
-  float highSidePressurePsi;    // High side pressure in PSI
-  uint32_t updatedAtMs;
+  float lowSidePressurePsi = NAN;  // Low side pressure in PSI
+  float highSidePressurePsi = NAN; // High side pressure in PSI
+  uint32_t updatedAtMs = 0;
 };
 
 struct HvacSaturationTemps {
-  float lowSideSatTempF;        // Saturation temp from low side pressure (°F)
-  float highSideSatTempF;       // Saturation temp from high side pressure (°F)
-  uint32_t updatedAtMs;
+  float lowSideSatTempF = NAN;  // Saturation temp from low side pressure (°F)
+  float highSideSatTempF = NAN; // Saturation temp from high side pressure (°F)
+  uint32_t updatedAtMs = 0;
 };
 
 struct HvacShSc {
-  float superheatF;             // Superheat: suction temp - low side sat temp (°F)
-  float subcoolingF;            // Subcooling: high side sat temp - liquid temp (°F)
-  uint32_t updatedAtMs;
+  float superheatF = NAN;  // Superheat: suction temp - low side sat temp (°F)
+  float subcoolingF = NAN; // Subcooling: high side sat temp - liquid temp (°F)
+  uint32_t updatedAtMs = NAN;
 };
 
 struct Max31855Reading {
-  float thermocoupleTempC;      // NAN if fault
-  float coldJunctionTempC;      // Usually valid even if TC fault
+  float thermocoupleTempC; // NAN if fault
+  float coldJunctionTempC; // Usually valid even if TC fault
   bool hasFault;
   bool faultOpenCircuit;
   bool faultShortToGND;
@@ -123,54 +113,83 @@ struct FaultReport {
 };
 
 // ===================== STRING HELPERS =====================
-inline const char* hvacModeToString(HvacMode mode) {
+inline const char *hvacModeToString(HvacMode mode) {
   switch (mode) {
-    case HvacMode::Off:     return "OFF";
-    case HvacMode::Cooling: return "COOLING";
-    case HvacMode::Heating: return "HEATING";
-    default:                return "UNKNOWN";
+  case HvacMode::Off:
+    return "OFF";
+  case HvacMode::Cooling:
+    return "COOLING";
+  case HvacMode::Heating:
+    return "HEATING";
+  default:
+    return "UNKNOWN";
   }
 }
 
-inline const char* diagToString(DiagnosticState diag) {
+inline const char *diagToString(DiagnosticState diag) {
   switch (diag) {
-    case DiagnosticState::Normal:          return "NORMAL";
-    case DiagnosticState::SensorFault:     return "SENSOR_FAULT";
-    case DiagnosticState::WeakPerformance: return "WEAK_PERFORMANCE";
-    case DiagnosticState::Unknown:         return "UNKNOWN";
-    default:                               return "UNKNOWN";
+  case DiagnosticState::Normal:
+    return "NORMAL";
+  case DiagnosticState::SensorFault:
+    return "SENSOR_FAULT";
+  case DiagnosticState::WeakPerformance:
+    return "WEAK_PERFORMANCE";
+  case DiagnosticState::Unknown:
+    return "UNKNOWN";
+  default:
+    return "UNKNOWN";
   }
 }
 
-inline const char* faultCodeToString(FaultCode f) {
+inline const char *faultCodeToString(FaultCode f) {
   switch (f) {
-    case FaultCode::None: return "NONE";
+  case FaultCode::None:
+    return "NONE";
 
-    case FaultCode::Fault_MissingTemp: return "FAULT_MISSING_TEMP";
-    case FaultCode::Fault_MissingPressure: return "FAULT_MISSING_PRESSURE";
-    case FaultCode::Fault_MissingSatTemp: return "FAULT_MISSING_SATTEMP";
-    case FaultCode::Fault_MissingShSc: return "FAULT_MISSING_SHSC";
+  case FaultCode::Fault_MissingTemp:
+    return "FAULT_MISSING_TEMP";
+  case FaultCode::Fault_MissingPressure:
+    return "FAULT_MISSING_PRESSURE";
+  case FaultCode::Fault_MissingSatTemp:
+    return "FAULT_MISSING_SATTEMP";
+  case FaultCode::Fault_MissingShSc:
+    return "FAULT_MISSING_SHSC";
 
-    case FaultCode::Fault_StaticNotEqualizing: return "FAULT_STATIC_NOT_EQUALIZING";
-    case FaultCode::Fault_HighPsiTooHigh: return "FAULT_HIGH_PSI_TOO_HIGH";
-    case FaultCode::Fault_LowPsiTooLow: return "FAULT_LOW_PSI_TOO_LOW";
+  case FaultCode::Fault_StaticNotEqualizing:
+    return "FAULT_STATIC_NOT_EQUALIZING";
+  case FaultCode::Fault_HighPsiTooHigh:
+    return "FAULT_HIGH_PSI_TOO_HIGH";
+  case FaultCode::Fault_LowPsiTooLow:
+    return "FAULT_LOW_PSI_TOO_LOW";
 
-    case FaultCode::Fault_SuctionLineFreezing: return "FAULT_SUCTION_LINE_FREEZING";
-    case FaultCode::Fault_LiquidLineTooHot: return "FAULT_LIQUID_LINE_TOO_HOT";
+  case FaultCode::Fault_SuctionLineFreezing:
+    return "FAULT_SUCTION_LINE_FREEZING";
+  case FaultCode::Fault_LiquidLineTooHot:
+    return "FAULT_LIQUID_LINE_TOO_HOT";
 
-    case FaultCode::Fault_DeltaTTooLow: return "FAULT_DELTAT_TOO_LOW";
-    case FaultCode::Fault_DeltaTTooHigh: return "FAULT_DELTAT_TOO_HIGH";
-    case FaultCode::Fault_DeltaTZero: return "FAULT_DELTAT_ZERO";
+  case FaultCode::Fault_DeltaTTooLow:
+    return "FAULT_DELTAT_TOO_LOW";
+  case FaultCode::Fault_DeltaTTooHigh:
+    return "FAULT_DELTAT_TOO_HIGH";
+  case FaultCode::Fault_DeltaTZero:
+    return "FAULT_DELTAT_ZERO";
 
-    case FaultCode::Fault_SubcoolLow: return "FAULT_SUBCOOL_LOW";
-    case FaultCode::Fault_SubcoolHigh: return "FAULT_SUBCOOL_HIGH";
-    case FaultCode::Fault_SuperheatLow: return "FAULT_SUPERHEAT_LOW";
-    case FaultCode::Fault_SuperheatHigh: return "FAULT_SUPERHEAT_HIGH";
+  case FaultCode::Fault_SubcoolLow:
+    return "FAULT_SUBCOOL_LOW";
+  case FaultCode::Fault_SubcoolHigh:
+    return "FAULT_SUBCOOL_HIGH";
+  case FaultCode::Fault_SuperheatLow:
+    return "FAULT_SUPERHEAT_LOW";
+  case FaultCode::Fault_SuperheatHigh:
+    return "FAULT_SUPERHEAT_HIGH";
 
-    case FaultCode::Fault_LowChargePattern: return "FAULT_LOW_CHARGE_PATTERN";
-    case FaultCode::Fault_RestrictionPattern: return "FAULT_RESTRICTION_PATTERN";
+  case FaultCode::Fault_LowChargePattern:
+    return "FAULT_LOW_CHARGE_PATTERN";
+  case FaultCode::Fault_RestrictionPattern:
+    return "FAULT_RESTRICTION_PATTERN";
 
-    default: return "FAULT_UNKNOWN";
+  default:
+    return "FAULT_UNKNOWN";
   }
 }
 
