@@ -25,7 +25,7 @@ static HvacState hvacState{};
 static HvacTemperatures hvacTemps{};
 static HvacPressures hvacPressures{};
 static HvacSaturationTemps hvacSatTemps{};
-static HvacShSc hvacShSc = {};
+static HvacShSc hvacShSc{};
 
 static FaultReport faultReport;
 
