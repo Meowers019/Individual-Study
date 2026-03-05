@@ -34,7 +34,7 @@ void setup() {
 
   // ===================== HARDWARE INIT =====================
   if (!TEST_MODE_ENABLED) {
-    ads.begin();
+    ADS1115::instance().begin();
     initMax31855Bus();
   } else {
     Serial.println("Skipping hardware initialization (TEST MODE)");
@@ -155,6 +155,7 @@ void loop() {
   if (!TEST_MODE_ENABLED) {
     float adcVoltageA0 = NAN;
     float adcVoltageA1 = NAN;
+    ADS1115 &ads = ADS1115::instance();
     bool a0Ok = ads.readRaw(0, adcVoltageA0);
     bool a1Ok = ads.readRaw(1, adcVoltageA1);
     float sensorVoltageA0 = ads.rawToVolt(adcVoltageA0);

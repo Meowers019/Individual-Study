@@ -18,8 +18,6 @@
 
 #define SERIAL_BAUD_RATE 115200
 
-ADS1115 ads;
-
 // ===================== GLOBAL STATE =====================
 static HvacState hvacState{};
 static HvacTemperatures hvacTemps{};
