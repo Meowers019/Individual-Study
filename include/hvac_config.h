@@ -61,7 +61,7 @@ static constexpr float SUPPLY_HEAT_MIN_C    = 30.0f;  // Supply ≥ 30°C suppor
 static constexpr int   MODE_CONFIRM_COUNT   = 3;      // Consecutive confirmations needed
 
 // ===================== RUNNING DETECTION THRESHOLDS =====================
-static constexpr float RUNNING_DELTA_T_C_THRESHOLD  = 0.6f;   // ~1.1°F
+static constexpr float RUNNING_DELTA_T_C_THRESHOLD  = 5.6f;   // ~10.1°F
 static constexpr float RUNNING_DELTA_PSI_THRESHOLD  = 25.0f;  // PSI
 
 // ===================== FAULT DETECTION THRESHOLDS =====================
@@ -75,12 +75,12 @@ static constexpr float LIQUID_TOO_HOT_F  = 130.0f;
 
 // Delta-T limits (Fahrenheit)
 static constexpr float DELTAT_LOW_F      = 10.0f;
-static constexpr float DELTAT_HIGH_F     = 25.0f;
+static constexpr float DELTAT_HIGH_F     = 42.0f;
 static constexpr float DELTAT_ZERO_F     = 2.0f;
 
 // Superheat/Subcooling limits (Fahrenheit)
 static constexpr float SUBCOOL_LOW_F     = 5.0f;
-static constexpr float SUBCOOL_HIGH_F    = 20.0f;
+static constexpr float SUBCOOL_HIGH_F    = 15.0f;  // Lowered to detect restrictions earlier
 static constexpr float SUPERHEAT_LOW_F   = 2.0f;
 static constexpr float SUPERHEAT_HIGH_F  = 25.0f;
 

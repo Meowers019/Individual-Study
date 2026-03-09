@@ -13,13 +13,36 @@ inline void initFaultReport(FaultReport &r) {
 }
 
 inline void bumpDiag(FaultReport &r, DiagnosticState d) {
-  // Worst wins: SensorFault > WeakPerformance > Normal
-  if (d == DiagnosticState::SensorFault) {
-    r.diag = DiagnosticState::SensorFault;
-  } else if (d == DiagnosticState::WeakPerformance) {
-    if (r.diag != DiagnosticState::SensorFault) {
-      r.diag = DiagnosticState::WeakPerformance;
+  // Diagnostic Priority Hierarchy (highest to lowest):
+  // 1. SensorFault - sensor issues
+  // 2. EvapOff, CompOff - component mismatch (hardware issues)
+  // 3. LowRefrigerant, Restriction - fundamental system issues
+  // 4. StaticNotEqualizing - system off but not equalizing
+  // 5. WeakAirflow - symptom (could be caused by other issues)
+  // 6. Poor - generic poor performance
+  // 7. WeakPerformance - minor issues
+  // 8. Normal
+  
+  // Assign numeric priority for comparison (lower number = higher priority)
+  auto getPriority = [](DiagnosticState state) -> int {
+    switch (state) {
+      case DiagnosticState::SensorFault:          return 1;
+      case DiagnosticState::EvapOff:              return 2;
+      case DiagnosticState::CompOff:              return 2;
+      case DiagnosticState::LowRefrigerant:       return 3;
+      case DiagnosticState::Restriction:          return 3;
+      case DiagnosticState::StaticNotEqualizing:  return 4;
+      case DiagnosticState::WeakAirflow:          return 5;
+      case DiagnosticState::Poor:                 return 6;
+      case DiagnosticState::WeakPerformance:      return 7;
+      case DiagnosticState::Normal:               return 8;
+      default:                                    return 9;
     }
+  };
+  
+  // Only update if new diagnostic has higher priority (lower number)
+  if (getPriority(d) < getPriority(r.diag)) {
+    r.diag = d;
   }
 }
 
@@ -63,6 +86,19 @@ inline FaultReport evaluateFaultsHeatPumpAll(
 
   auto ok = [](float v) { return !isnan(v); };
 
+  // ---------- OFF-STATE EQUALIZATION CHECK ----------
+  if (sys == HvacSystemState::Off) {
+    // If unit is truly off, high/low should drift toward equal over time
+    // If deltaPsi stays high, suggests restriction/stuck TXV/valves not bypassing
+    if (ok(p.lowSidePressurePsi) && ok(p.highSidePressurePsi)) {
+      const float dpsi = p.highSidePressurePsi - p.lowSidePressurePsi;
+      if (!isnan(dpsi) && fabsf(dpsi) > STATIC_EQUALIZE_DELTA_PSI_MAX) {
+        addFault(r, FaultCode::Fault_StaticNotEqualizing, DiagnosticState::StaticNotEqualizing);
+      }
+    }
+    return r;  // Skip running-state checks
+  }
+
   // Convert needed temps to F for comparisons
   const float suctionF = celsiusToFahrenheit(t.lowPressureLineTempC);
   const float liquidF  = celsiusToFahrenheit(t.highPressureLineTempC);
@@ -82,19 +118,6 @@ inline FaultReport evaluateFaultsHeatPumpAll(
     addFault(r, FaultCode::Fault_MissingShSc, DiagnosticState::SensorFault);
   }
 
-  // ---------- OFF-STATE EQUALIZATION CHECK ----------
-  if (sys == HvacSystemState::Off) {
-    // If unit is truly off, high/low should drift toward equal over time
-    // If deltaPsi stays high, suggests restriction/stuck TXV/valves not bypassing
-    if (ok(p.lowSidePressurePsi) && ok(p.highSidePressurePsi)) {
-      const float dpsi = p.highSidePressurePsi - p.lowSidePressurePsi;
-      if (!isnan(dpsi) && fabsf(dpsi) > STATIC_EQUALIZE_DELTA_PSI_MAX) {
-        addFault(r, FaultCode::Fault_StaticNotEqualizing, DiagnosticState::WeakPerformance);
-      }
-    }
-    return r;  // Skip running-state checks
-  }
-
   // ---------- RUNNING STATE CHECKS ----------
   // If we're missing data, we've already flagged it above
   const bool tempsOk = ok(t.supplyAirTempC) && ok(t.returnAirTempC) && ok(deltaTF);
@@ -104,13 +127,14 @@ inline FaultReport evaluateFaultsHeatPumpAll(
 
   // ---------- DELTA-T ----------
   if (tempsOk) {
-    if (fabsf(deltaTF) <= DELTAT_ZERO_F) {
+    const float absDeltaTF = fabsf(deltaTF);
+    if (absDeltaTF <= DELTAT_ZERO_F) {
       addFault(r, FaultCode::Fault_DeltaTZero, DiagnosticState::WeakPerformance);
     }
-    if (deltaTF < DELTAT_LOW_F) {
+    if (absDeltaTF < DELTAT_LOW_F) {
       addFault(r, FaultCode::Fault_DeltaTTooLow, DiagnosticState::WeakPerformance);
     }
-    if (deltaTF > DELTAT_HIGH_F) {
+    if (absDeltaTF > DELTAT_HIGH_F) {
       addFault(r, FaultCode::Fault_DeltaTTooHigh, DiagnosticState::WeakPerformance);
     }
   }
@@ -153,11 +177,20 @@ inline FaultReport evaluateFaultsHeatPumpAll(
   if (shscOk) {
     // Low charge: low subcool + high superheat
     if (shsc.subcoolingF < SUBCOOL_LOW_F && shsc.superheatF > SUPERHEAT_HIGH_F) {
-      addFault(r, FaultCode::Fault_LowChargePattern, DiagnosticState::WeakPerformance);
+      addFault(r, FaultCode::Fault_LowChargePattern, DiagnosticState::LowRefrigerant);
     }
     // Restriction: high subcool + high superheat
     if (shsc.subcoolingF > SUBCOOL_HIGH_F && shsc.superheatF > SUPERHEAT_HIGH_F) {
-      addFault(r, FaultCode::Fault_RestrictionPattern, DiagnosticState::WeakPerformance);
+      addFault(r, FaultCode::Fault_RestrictionPattern, DiagnosticState::Restriction);
+    }
+  }
+
+  // Weak airflow: low deltaT + high superheat (evaporator not absorbing heat)
+  if (tempsOk && shscOk) {
+    const float absDeltaTF = fabsf(deltaTF);
+    // DeltaT is low (but not zero) and superheat is high
+    if (absDeltaTF > DELTAT_ZERO_F && absDeltaTF < DELTAT_LOW_F && shsc.superheatF > SUPERHEAT_HIGH_F) {
+      addFault(r, FaultCode::Fault_WeakAirflowPattern, DiagnosticState::WeakAirflow);
     }
   }
 

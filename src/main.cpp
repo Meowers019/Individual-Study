@@ -16,6 +16,8 @@
 #include "hvac_sensors.h"
 #include "hvac_diagnostics.h"
 #include "hvac_test_data.h"
+#include  "network_setup.h"
+
 
 // ===================== GLOBAL STATE =====================
 static HvacState hvacState = {
@@ -59,9 +61,17 @@ static FaultReport faultReport;
 void setup() {
   Serial.begin(115200);
   delay(200);
+  
+//dylan addition starts here 
+  Serial.println("Starting ESP32 Hub...");
 
+  wifiProvision();       // Captive portal provisioning
+  startLocalServer();    // Local ESP HTTP server
+//dylan addition ends here 
   Serial.println("\n=== HVAC ESP32 Monitoring System ===");
   Serial.println("Modular architecture - Ready for WiFi integration");
+
+
 
   // ===================== TEST MODE SETUP =====================
   // Uncomment ONE of these lines to enable test mode with a specific scenario:
@@ -69,15 +79,15 @@ void setup() {
   // enableTestMode(TestScenario::Normal_Cooling);
   // enableTestMode(TestScenario::Normal_Heating);
   // enableTestMode(TestScenario::System_Off);
-  // enableTestMode(TestScenario::Low_Refrigerant_Charge);
-  // enableTestMode(TestScenario::Dirty_Condenser);
-  // enableTestMode(TestScenario::Dirty_Evaporator);
-  // enableTestMode(TestScenario::Restriction_TXV);
-  // enableTestMode(TestScenario::Suction_Line_Freezing);
+  // enableTestMode(TestScenario::Low_Refrigerant_Charge);        /* MODE=Mismatch ; may want to think of a way to make mismatch isolated to EVAP/COND OFF */
+  // enableTestMode(TestScenario::Dirty_Condenser);               
+  // enableTestMode(TestScenario::Dirty_Evaporator);              
+   enableTestMode(TestScenario::Restriction_TXV);               /* DIAG=RESTRICTION; FAULT_RESTRICTION_PATTERN */
+  // enableTestMode(TestScenario::Suction_Line_Freezing);         /* Add diag=FREEZING_AirHandler if deltaT pattern matches; FAULT_FREEZING_PATTERN */
   // enableTestMode(TestScenario::Static_Not_Equalizing);
-  // enableTestMode(TestScenario::Weak_Airflow);
+  // enableTestMode(TestScenario::Weak_Airflow);                  /* MODE=Mismatch ; may want to think of a way to make mismatch isolated to EVAP/COND OFF */
   // enableTestMode(TestScenario::Multiple_Faults);
-  // enableTestMode(TestScenario::All_Sensors_Fault);
+  // enableTestMode(TestScenario::All_Sensors_Fault);             /* All sensors reading NAN; diag=SENSOR_FAULT; FAULT_ALL_SENSORS_FAULT_PATTERN */
   // enableTestMode(TestScenario::Custom);
   
   // printTestScenarioList();  // Show all available scenarios
@@ -95,14 +105,21 @@ void setup() {
 
 // ===================== LOOP =====================
 void loop() {
+
   // Declare sensor readings (used for live mode only)
   Max31855Reading sensorHighPressure = {};
   Max31855Reading sensorLowPressure = {};
   Max31855Reading sensorSupplyAir = {};
   Max31855Reading sensorReturnAir = {};
 
-  // ---------- READ THERMOCOUPLES (or use test data) ----------
+  // ---------- READ THERMOCOUPLEbS (or use test data) ----------
   if (TEST_MODE_ENABLED) {
+
+  handleLocalServer();
+    sendToAWS();
+    delay(5000);
+
+
     // Use simulated test data
     applyTestDataToHvacTemps(hvacTemps);
     applyTestDataToHvacPressures(hvacPressures);
@@ -140,6 +157,13 @@ void loop() {
 
     // ---------- UPDATE PRESSURES ----------
     updateHvacPressures(hvacPressures);
+
+    //dylan addition starts here 
+    handleLocalServer();
+    sendToAWS();
+    delay(5000);
+    //dylan addition ends here 
+
   }
 
   // ---------- HVAC STATE ANALYSIS ----------
@@ -159,9 +183,13 @@ void loop() {
     hvacState.systemState, hvacState.mode
   );
 
-  hvacState.diagnostic = faultReport.diag;
+  // Allow fault report to overwrite diagnostic (except SensorFault which is set earlier)
+  // Condition diagnostics (EVAP_OFF, COMP_OFF, LOW_REFRIGERANT, POOR) can overwrite each other
+  if (hvacState.diagnostic != DiagnosticState::SensorFault) {
+    hvacState.diagnostic = faultReport.diag;
+  }
 
-  // ===================== SERIAL OUTPUT =====================
+  // ===================== SERIAL OUTPUT =====================    this is where the test input goes too!!! 
   Serial.println("=== BEGIN MONITORING ===");
   if (TEST_MODE_ENABLED) {
     Serial.printf("*** TEST MODE: %s ***\n", getActiveTestData().description);
@@ -192,7 +220,7 @@ void loop() {
 
   if (!isnan(hvacTemps.deltaTempC)) {
     float deltaTempF = deltaCelsiusToDeltaFahrenheit(hvacTemps.deltaTempC);
-    Serial.printf("DeltaT (Return-Supply): %.2f F\n", deltaTempF);
+    Serial.printf("DeltaT (Return-Supply): %.2f F\n", fabsf(deltaTempF));
   } else {
     Serial.println("DeltaT (Return-Supply): FAULT");
   }

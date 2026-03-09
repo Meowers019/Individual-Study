@@ -4,6 +4,31 @@
 // ===================== WIFI & MQTT INTEGRATION (TEMPLATE) =====================
 // Uncomment and configure when ready to add networking capabilities
 
+//Dylan stuff starts here, just creating header files, will do definiions later
+
+//config.h part :
+#pragma once
+
+// Local AP for ESP mesh / sensors
+#define LOCAL_SSID     "esp_router"
+#define LOCAL_PASSWORD "password123"
+
+// AWS
+#define AWS_URL "https://oyhd0jydrg.execute-api.us-east-2.amazonaws.com/data"
+
+//wifi provisions.h part: 
+
+void wifiProvision();
+
+//aws client.h part: 
+void sendToAWS();
+
+// local server.h 
+void startLocalServer();
+void handleLocalServer();
+
+
+
 /*
 // Recommended libraries to add to platformio.ini:
 // lib_deps = 

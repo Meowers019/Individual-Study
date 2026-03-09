@@ -75,6 +75,14 @@ inline void updateHvacModeFromTemperatures(
     return;
   }
 
+  // If EVAP_OFF or COMP_OFF detected, set mode to MISMATCH
+  // Temperature readings are unreliable when components are mismatched
+  if (state.diagnostic == DiagnosticState::EvapOff || 
+      state.diagnostic == DiagnosticState::CompOff) {
+    state.mode = HvacMode::Mismatch;
+    return;
+  }
+
   // Validate temperature data
   if (!isValidTemp(temps.supplyAirTempC) || 
       !isValidTemp(temps.returnAirTempC) || 
@@ -144,11 +152,24 @@ inline void updateHvacRunStateFromDeltaTOrDeltaPsi(
   }
 
   const bool runningByDeltaT   = deltaTOk   && (absf_safe(t.deltaTempC) >= RUNNING_DELTA_T_C_THRESHOLD);
-  const bool runningByDeltaPsi = deltaPsiOk && (absf_safe(deltaPsi)     >= RUNNING_DELTA_PSI_THRESHOLD);
+  
+  // For deltaPsi: Only consider system running if high side > low side AND difference is significant
+  // Negative deltaPsi (low > high) indicates off/equalizing state or sensor issue
+  const bool runningByDeltaPsi = deltaPsiOk && (deltaPsi >= RUNNING_DELTA_PSI_THRESHOLD);
 
-  const HvacSystemState newSys = (runningByDeltaT || runningByDeltaPsi)
-    ? HvacSystemState::Running
-    : HvacSystemState::Off;
+  // Special case: If deltaT is essentially zero, system is OFF regardless of pressure
+  // This handles static conditions where residual pressure exists but no operation
+  const bool systemDefinitelyOff = deltaTOk && (absf_safe(t.deltaTempC) < 0.1f);  // < 0.1°C (~0.2°F)
+
+  // Determine system state
+  HvacSystemState newSys;
+  if (systemDefinitelyOff) {
+    // DeltaT is near zero - system is definitely OFF (ignore pressure)
+    newSys = HvacSystemState::Off;
+  } else {
+    // System is running if EITHER deltaT OR deltaPsi indicates running
+    newSys = (runningByDeltaT || runningByDeltaPsi) ? HvacSystemState::Running : HvacSystemState::Off;
+  }
 
   // Transition handling
   if (newSys != s.systemState) {
@@ -160,6 +181,24 @@ inline void updateHvacRunStateFromDeltaTOrDeltaPsi(
   if (s.systemState == HvacSystemState::Off) {
     s.mode = HvacMode::Off;
     s.substate = HvacSubstate::None;
+  }
+
+  // Detect mismatched running indicators
+  if (s.systemState == HvacSystemState::Running) {
+    // Case 1: Compressor running WITHOUT evaporator/airflow (EVAP_OFF)
+    if (runningByDeltaPsi && !runningByDeltaT && deltaTOk) {
+      // Compressor is active but no air temperature change
+      // Indicates indoor blower failure or severe airflow restriction
+      s.diagnostic = DiagnosticState::EvapOff;
+    }
+    // Case 2: Evaporator/airflow running WITHOUT compressor pressure (COMP_OFF)
+    else if (runningByDeltaT && !runningByDeltaPsi && deltaPsiOk) {
+      // Air temperature is changing but no compressor pressure difference
+      // Indicates compressor failure, stuck valves, or severe refrigerant leak
+      s.diagnostic = DiagnosticState::CompOff;
+    }
+    // Case 3: Both indicators agree - normal operation or fault-based diagnostics
+    // (WEAK_PERFORMANCE or POOR will be set by fault evaluation if issues exist)
   }
 
   // Don't overwrite diagnostic if already set to SensorFault

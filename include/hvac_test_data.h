@@ -52,21 +52,21 @@ static const TestSensorData TEST_SCENARIOS[] = {
   // Normal_Cooling: Healthy system in cooling mode
   {
     .highPressureLineTempC = 37.8f,   // 100°F liquid line
-    .lowPressureLineTempC = 10.0f,    // 50°F suction line
+    .lowPressureLineTempC = 3.0f,     // 37.4°F suction line
     .supplyAirTempC = 12.8f,          // 55°F supply air
     .returnAirTempC = 23.9f,          // 75°F return air (20°F delta)
-    .lowSidePressurePsi = 69.0f,      // ~40°F evap temp
-    .highSidePressurePsi = 278.0f,    // ~120°F condensing temp
+    .lowSidePressurePsi = 69.0f,      // ~29°F evap temp
+    .highSidePressurePsi = 366.0f,    // ~110°F condensing temp
     .description = "Normal Cooling - Healthy system"
   },
   
   // Normal_Heating: Healthy system in heating mode
   {
-    .highPressureLineTempC = 32.2f,   // 90°F liquid line
+    .highPressureLineTempC = 26.0f,   // 78.8°F liquid line
     .lowPressureLineTempC = 4.4f,     // 40°F suction line
-    .supplyAirTempC = 43.3f,          // 110°F supply air
+    .supplyAirTempC = 38.0f,          // 100.4°F supply air
     .returnAirTempC = 21.1f,          // 70°F return air (-40°F delta)
-    .lowSidePressurePsi = 55.0f,      // Low side
+    .lowSidePressurePsi = 80.0f,      // Low side
     .highSidePressurePsi = 260.0f,    // High side
     .description = "Normal Heating - Healthy system"
   },
@@ -87,7 +87,7 @@ static const TestSensorData TEST_SCENARIOS[] = {
     .highPressureLineTempC = 32.2f,   // 90°F liquid line
     .lowPressureLineTempC = 7.2f,     // 45°F suction line
     .supplyAirTempC = 15.6f,          // 60°F supply (poor cooling)
-    .returnAirTempC = 23.9f,          // 75°F return (low delta-T)
+    .returnAirTempC = 20.9f,          // 70°F return (low delta-T)
     .lowSidePressurePsi = 50.0f,      // Low suction pressure
     .highSidePressurePsi = 200.0f,    // Low head pressure
     .description = "Low Refrigerant Charge - Low subcool, high superheat"
@@ -117,12 +117,12 @@ static const TestSensorData TEST_SCENARIOS[] = {
   
   // Restriction_TXV: Restriction pattern
   {
-    .highPressureLineTempC = 32.2f,   // 90°F liquid line (cool)
+    .highPressureLineTempC = 27.0f,   // 90°F liquid line (cool)
     .lowPressureLineTempC = 1.7f,     // 35°F suction line
-    .supplyAirTempC = 15.6f,          // 60°F supply
+    .supplyAirTempC = 20.6f,          // 69°F supply
     .returnAirTempC = 23.9f,          // 75°F return
-    .lowSidePressurePsi = 35.0f,      // Low suction
-    .highSidePressurePsi = 278.0f,    // Normal head
+    .lowSidePressurePsi = 55.0f,      // Low suction
+    .highSidePressurePsi = 325.0f,    // Higher head
     .description = "TXV Restriction - High subcool, high superheat"
   },
   
@@ -155,7 +155,7 @@ static const TestSensorData TEST_SCENARIOS[] = {
     .supplyAirTempC = 18.3f,          // 65°F supply (warm)
     .returnAirTempC = 21.1f,          // 70°F return (only 5°F delta!)
     .lowSidePressurePsi = 69.0f,      // Normal suction
-    .highSidePressurePsi = 278.0f,    // Normal head
+    .highSidePressurePsi = 350.0f,    // Normal head
     .description = "Weak Airflow - Low delta-T despite running"
   },
   

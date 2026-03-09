@@ -7,13 +7,21 @@
 enum class HvacMode : uint8_t {
   Off = 0,
   Cooling,
-  Heating
+  Heating,
+  Mismatch
 };
 
 enum class DiagnosticState : uint8_t {
   Normal = 0,
   SensorFault,
   WeakPerformance,
+  Poor,
+  EvapOff,
+  CompOff,
+  LowRefrigerant,
+  Restriction,
+  WeakAirflow,
+  StaticNotEqualizing,
   Unknown
 };
 
@@ -59,7 +67,8 @@ enum class FaultCode : uint16_t {
 
   // Cross-check combos
   Fault_LowChargePattern,
-  Fault_RestrictionPattern
+  Fault_RestrictionPattern,
+  Fault_WeakAirflowPattern
 };
 
 // ===================== STRUCTURES =====================
@@ -125,20 +134,28 @@ struct FaultReport {
 // ===================== STRING HELPERS =====================
 inline const char* hvacModeToString(HvacMode mode) {
   switch (mode) {
-    case HvacMode::Off:     return "OFF";
-    case HvacMode::Cooling: return "COOLING";
-    case HvacMode::Heating: return "HEATING";
-    default:                return "UNKNOWN";
+    case HvacMode::Off:      return "OFF";
+    case HvacMode::Cooling:  return "COOLING";
+    case HvacMode::Heating:  return "HEATING";
+    case HvacMode::Mismatch: return "MISMATCH";
+    default:                 return "UNKNOWN";
   }
 }
 
 inline const char* diagToString(DiagnosticState diag) {
   switch (diag) {
-    case DiagnosticState::Normal:          return "NORMAL";
-    case DiagnosticState::SensorFault:     return "SENSOR_FAULT";
-    case DiagnosticState::WeakPerformance: return "WEAK_PERFORMANCE";
-    case DiagnosticState::Unknown:         return "UNKNOWN";
-    default:                               return "UNKNOWN";
+    case DiagnosticState::Normal:              return "NORMAL";
+    case DiagnosticState::SensorFault:         return "SENSOR_FAULT";
+    case DiagnosticState::WeakPerformance:     return "WEAK_PERFORMANCE";
+    case DiagnosticState::Poor:                return "POOR";
+    case DiagnosticState::EvapOff:             return "EVAP_OFF";
+    case DiagnosticState::CompOff:             return "COMP_OFF";
+    case DiagnosticState::LowRefrigerant:      return "LOW_REFRIGERANT";
+    case DiagnosticState::Restriction:         return "RESTRICTION";
+    case DiagnosticState::WeakAirflow:         return "WEAK_AIRFLOW";
+    case DiagnosticState::StaticNotEqualizing: return "STATIC_NOT_EQUALIZING";
+    case DiagnosticState::Unknown:             return "UNKNOWN";
+    default:                                   return "UNKNOWN";
   }
 }
 
@@ -169,6 +186,7 @@ inline const char* faultCodeToString(FaultCode f) {
 
     case FaultCode::Fault_LowChargePattern: return "FAULT_LOW_CHARGE_PATTERN";
     case FaultCode::Fault_RestrictionPattern: return "FAULT_RESTRICTION_PATTERN";
+    case FaultCode::Fault_WeakAirflowPattern: return "FAULT_WEAK_AIRFLOW_PATTERN";
 
     default: return "FAULT_UNKNOWN";
   }
