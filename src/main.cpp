@@ -5,6 +5,14 @@
 #include "main.h"
 
 // ===================== SETUP =====================
+static inline HvacState hvacState{};
+static inline HvacTemperatures hvacTemps{};
+static inline HvacPressures hvacPressures{};
+static inline HvacSaturationTemps hvacSatTemps{};
+static inline HvacShSc hvacShSc{};
+
+static inline FaultReport faultReport;
+
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   while (!Serial)

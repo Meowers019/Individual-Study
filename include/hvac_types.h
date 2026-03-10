@@ -82,6 +82,13 @@ struct HvacSaturationTemps {
   uint32_t updatedAtMs = 0;
 };
 
+struct Psi_Sensor {
+  uint8_t channel;
+  float fullScale;
+  float voltZero;
+  float voltFull;
+};
+
 struct HvacShSc {
   float superheatF = NAN;  // Superheat: suction temp - low side sat temp (°F)
   float subcoolingF = NAN; // Subcooling: high side sat temp - liquid temp (°F)

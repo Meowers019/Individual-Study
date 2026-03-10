@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "hvac_types.h"
+
 // ===================== PINOUT =====================
 // SPI for MAX31855 (read-only)
 static constexpr uint8_t SPI_CLOCK_PIN = 18;
@@ -29,13 +31,6 @@ static constexpr float RETURN_TEMP_OFFSET_C =
 static constexpr float VOLTAGE_DIVIDER_GAIN_TO_SENSOR = 3.0f / 2.0f;
 
 // ===================== PRESSURE SENSOR SPECS =====================
-struct Psi_Sensor {
-  uint8_t channel;
-  float fullScale;
-  float voltZero;
-  float voltFull;
-};
-
 static constexpr Psi_Sensor psiA0 = {0, 1000.0f, 0.0f, 5.0f};
 static constexpr Psi_Sensor psiA1 = {1, 600.0f, 1.0f, 5.0f};
 

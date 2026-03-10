@@ -6,7 +6,6 @@
 #include <Wire.h>
 #include <math.h>
 
-// HVAC System Headers
 #include "ads1115_driver.h"
 #include "hvac_config.h"
 #include "hvac_diagnostics.h"
@@ -16,15 +15,6 @@
 #include "max31855_driver.h"
 #include "r22_tables.h"
 
-#define SERIAL_BAUD_RATE 115200
-
-// ===================== GLOBAL STATE =====================
-static HvacState hvacState{};
-static HvacTemperatures hvacTemps{};
-static HvacPressures hvacPressures{};
-static HvacSaturationTemps hvacSatTemps{};
-static HvacShSc hvacShSc{};
-
-static FaultReport faultReport;
+constexpr int SERIAL_BAUD_RATE = 115200
 
 #endif
