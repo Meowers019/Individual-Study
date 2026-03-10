@@ -6,6 +6,8 @@
 
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASS;
+const char *aws_url = AWS_URL;
+
 WebServer server(80);
 
 void wifiProvision()
@@ -72,7 +74,7 @@ void sendToAWS()
         return;
 
     HTTPClient http;     // creates object http
-    http.begin(AWS_URL); // http is connected to aws_URL
+    http.begin(aws_url); // http is connected to aws_URL
     http.addHeader("Content-Type", "application/json");
 
     String payload = "{\"temp\":24.5, \"device\":\"esp32_1\"}";

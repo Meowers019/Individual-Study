@@ -4,34 +4,27 @@
 // ===================== WIFI & MQTT INTEGRATION (TEMPLATE) =====================
 // Uncomment and configure when ready to add networking capabilities
 
-//Dylan stuff starts here, just creating header files, will do definiions later
+// Dylan stuff starts here, just creating header files, will do definiions later
 
-//config.h part :
+// config.h part :
 #pragma once
 
-// Local AP for ESP mesh / sensors
-#define LOCAL_SSID     "esp_router"
-#define LOCAL_PASSWORD "password123"
-
 // AWS
-#define AWS_URL "https://oyhd0jydrg.execute-api.us-east-2.amazonaws.com/data"
 
-//wifi provisions.h part: 
+// wifi provisions.h part:
 
 void wifiProvision();
 
-//aws client.h part: 
+// aws client.h part:
 void sendToAWS();
 
-// local server.h 
+// local server.h
 void startLocalServer();
 void handleLocalServer();
 
-
-
 /*
 // Recommended libraries to add to platformio.ini:
-// lib_deps = 
+// lib_deps =
 //     knolleary/PubSubClient@^2.8
 
 #include <WiFi.h>
@@ -81,7 +74,7 @@ inline void connectWifi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   uint32_t startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && 
+  while (WiFi.status() != WL_CONNECTED &&
          millis() - startAttempt < WIFI_CONNECT_TIMEOUT_MS) {
     delay(500);
     Serial.print(".");
@@ -99,9 +92,9 @@ inline void connectWifi() {
 inline void checkWifiConnection() {
   uint32_t now = millis();
   if (now - lastWifiCheck < WIFI_RECONNECT_INTERVAL_MS) return;
-  
+
   lastWifiCheck = now;
-  
+
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi disconnected, reconnecting...");
     connectWifi();
@@ -115,22 +108,22 @@ inline void connectMqtt() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   Serial.println("Connecting to MQTT broker...");
-  
+
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  
+
   bool connected = false;
   if (strlen(MQTT_USERNAME) > 0) {
     connected = mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD,
                                     MQTT_TOPIC_AVAILABILITY, 0, true, "offline");
   } else {
-    connected = mqttClient.connect(MQTT_CLIENT_ID, 
+    connected = mqttClient.connect(MQTT_CLIENT_ID,
                                     MQTT_TOPIC_AVAILABILITY, 0, true, "offline");
   }
 
   if (connected) {
     Serial.println("MQTT connected!");
     mqttClient.publish(MQTT_TOPIC_AVAILABILITY, "online", true);
-    
+
     // TODO: Publish Home Assistant discovery messages here
     publishHomeAssistantDiscovery();
   } else {
@@ -156,8 +149,8 @@ inline void publishHomeAssistantDiscovery() {
   })";
 
   mqttClient.publish(
-    "homeassistant/sensor/hvac_supply_temp/config", 
-    discoveryMsg, 
+    "homeassistant/sensor/hvac_supply_temp/config",
+    discoveryMsg,
     true  // retained
   );
 
@@ -211,12 +204,12 @@ inline String createStateJson(const HvacState& state) {
 
 inline String createDiagnosticsJson(const FaultReport& faults) {
   String json = "{\"fault_count\":" + String(faults.count) + ",\"faults\":[";
-  
+
   for (uint8_t i = 0; i < faults.count; i++) {
     if (i > 0) json += ",";
     json += "\"" + String(faultCodeToString(faults.codes[i])) + "\"";
   }
-  
+
   json += "]}";
   return json;
 }
@@ -229,7 +222,7 @@ inline void publishSensorData(
 ) {
   uint32_t now = millis();
   if (now - lastMqttPublish < NETWORK_SEND_INTERVAL_MS) return;
-  
+
   if (!mqttClient.connected()) return;
 
   lastMqttPublish = now;
@@ -247,7 +240,7 @@ inline void publishSensorData(
 
 inline void initWifiAndMqtt() {
   connectWifi();
-  
+
   if (WiFi.status() == WL_CONNECTED) {
     connectMqtt();
   }
