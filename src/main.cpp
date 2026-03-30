@@ -225,6 +225,7 @@ void setup() {
   startLocalServer();  // Start local HTTP server
 
   // To enable test mode, uncomment ONE of the lines below:
+  // 
   // enableTestMode(TestScenario::Normal_Cooling);
   // enableTestMode(TestScenario::Low_Refrigerant_Charge);
   // printTestScenarioList();
