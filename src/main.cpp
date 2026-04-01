@@ -1,4 +1,5 @@
 // ===================== ESP32 HVAC MONITORING SYSTEM =====================
+// UPDATE THIS DATE WITH EVERY COMMIT: 2026-04-01
 // Modular architecture for HVAC diagnostics and monitoring
 
 #include <Arduino.h>
