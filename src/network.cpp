@@ -7,6 +7,7 @@
 #include "hvac_config.h"
 #include "hvac_diagnostics.h"
 #include "hvac_sensors.h"
+#include "dashboard_demo.h"
 
 // Access global HVAC data from main.cpp
 extern HvacState hvacState;
@@ -155,15 +156,53 @@ void handleJson() {
     server.send(200, "application/json", json);
 }
 
+// ===================== DASHBOARD DEMO HANDLERS =====================
+
+// Non-inline linkable wrappers called from main.cpp.
+// All dashboard static state lives in this translation unit (dashboard_demo.h
+// is only included here), which keeps dashUnits[] in a single storage location.
+void initDashboard()   { dashInitInternal(); }
+void updateDashboard() { dashUpdateInternal(); }
+
+void handleDashboard() {
+    server.send(200, "text/html", getDashboardHtml());
+}
+
+void handleDashboardJson() {
+    server.send(200, "application/json", getDashboardJson());
+}
+
+void handleDashboardSetScenario() {
+    String unitStr     = server.arg("unit");
+    String scenarioStr = server.arg("scenario");
+
+    if (unitStr.isEmpty() || scenarioStr.isEmpty()) {
+        server.send(400, "text/plain", "Missing 'unit' or 'scenario' param");
+        return;
+    }
+
+    uint8_t unitIdx    = (uint8_t)unitStr.toInt();
+    uint8_t scenarioIdx = (uint8_t)scenarioStr.toInt();
+    setDashUnitScenario(unitIdx, scenarioIdx);
+
+    // Redirect back to dashboard
+    server.sendHeader("Location", "/dashboard");
+    server.send(302, "text/plain", "");
+}
+
 // ===================== SERVER LIFECYCLE =====================
 
 void startLocalServer() {
-    server.on("/",     HTTP_GET,  handleRoot);
-    server.on("/json", HTTP_GET,  handleJson);
-    server.on("/data", HTTP_POST, handleData);
+    server.on("/",                         HTTP_GET,  handleRoot);
+    server.on("/json",                     HTTP_GET,  handleJson);
+    server.on("/data",                     HTTP_POST, handleData);
+    server.on("/dashboard",                HTTP_GET,  handleDashboard);
+    server.on("/dashboard/json",           HTTP_GET,  handleDashboardJson);
+    server.on("/dashboard/setscenario",    HTTP_GET,  handleDashboardSetScenario);
     server.begin();
     Serial.println("Local HTTP server started on port 80");
-    Serial.println("Dashboard: http://" + WiFi.localIP().toString());
+    Serial.println("Monitor:   http://" + WiFi.localIP().toString());
+    Serial.println("Dashboard: http://" + WiFi.localIP().toString() + "/dashboard");
 }
 
 void handleLocalServer() {

@@ -199,6 +199,16 @@ inline const TestSensorData& getActiveTestData() {
   return TEST_SCENARIOS[(uint8_t)ACTIVE_TEST_SCENARIO];
 }
 
+// ===================== VARIANCE HELPER =====================
+// Adds real-world noise of ±3.0–5.0 units to simulate sensor variation.
+// NAN values (e.g. All_Sensors_Fault) pass through unchanged.
+static float addVariance(float base) {
+  if (isnan(base)) return base;
+  float magnitude = 3.0f + (random(0, 2001) / 1000.0f); // 3.0 to 5.0
+  float sign = (random(0, 2) == 0) ? -1.0f : 1.0f;
+  return base + sign * magnitude;
+}
+
 inline void applyTestDataToHvacTemps(HvacTemperatures& temps) {
   if (!TEST_MODE_ENABLED) return;
   
@@ -224,8 +234,8 @@ inline void applyTestDataToHvacPressures(HvacPressures& pressures) {
   
   const TestSensorData& testData = getActiveTestData();
   
-  pressures.lowSidePressurePsi = testData.lowSidePressurePsi;
-  pressures.highSidePressurePsi = testData.highSidePressurePsi;
+  pressures.lowSidePressurePsi = addVariance(testData.lowSidePressurePsi);
+  pressures.highSidePressurePsi = addVariance(testData.highSidePressurePsi);
   pressures.updatedAtMs = millis();
 }
 

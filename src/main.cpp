@@ -20,6 +20,8 @@
 #include "hvac_diagnostics.h"
 #include "hvac_test_data.h"
 #include "network_setup.h"
+// dashboard_demo.h is included only in network.cpp to avoid duplicate static storage.
+// initDashboard() and updateDashboard() are declared extern in network_setup.h.
 
 // ===================== GLOBAL STATE =====================
 HvacState hvacState = {
@@ -224,6 +226,7 @@ void setup() {
 
   wifiProvision();     // Captive portal WiFi provisioning
   startLocalServer();  // Start local HTTP server
+  initDashboard();     // Initialize 5-unit demo dashboard
 
   // To enable test mode, uncomment ONE of the lines below:
   // 
@@ -247,6 +250,7 @@ void loop() {
   runDiagnostics();
   printMonitoringReport();
 
+  updateDashboard();   // Advance all 5 demo units (variance + diagnostics)
   handleLocalServer();
   sendToAWS();
 
