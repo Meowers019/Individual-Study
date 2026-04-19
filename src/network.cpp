@@ -181,8 +181,16 @@ void handleDashboardSetScenario() {
         return;
     }
 
-    uint8_t unitIdx    = (uint8_t)unitStr.toInt();
+    uint8_t unitIdx     = (uint8_t)unitStr.toInt();
     uint8_t scenarioIdx = (uint8_t)scenarioStr.toInt();
+
+    if (unitIdx >= DASH_UNIT_COUNT || scenarioIdx >= DASH_SCENARIO_COUNT) {
+        server.send(400, "text/plain",
+            "Invalid index: unit must be 0-" + String(DASH_UNIT_COUNT - 1) +
+            ", scenario must be 0-" + String(DASH_SCENARIO_COUNT - 1));
+        return;
+    }
+
     setDashUnitScenario(unitIdx, scenarioIdx);
 
     // Redirect back to dashboard

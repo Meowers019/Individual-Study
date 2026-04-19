@@ -23,7 +23,7 @@
 
 // ===================== CONFIGURATION =====================
 
-#define DASH_UNIT_COUNT 100
+#define DASH_UNIT_COUNT 5
 
 // Human-readable scenario names (must match TestScenario enum order)
 static const char* DASH_SCENARIO_NAMES[] = {
